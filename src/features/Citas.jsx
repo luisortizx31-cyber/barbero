@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { useEstado, guardarCita, cambiarEstadoCita, eliminarCita, guardarCliente } from '../data/store'
+import { useEstado, guardarCita, cambiarEstadoCita, eliminarCita, guardarCliente, aceptarCita } from '../data/store'
 import { claveDia, formatearDia, formatearHora } from '../domain/hora'
 import { linkWhatsapp } from '../domain/clientes'
 import { formatearMonto } from '../domain/dinero'
@@ -8,6 +8,8 @@ import { ElegirCliente, ElegirCortes } from '../ui/Cobro'
 import { ElegirBarbero } from '../ui/ElegirBarbero'
 import { FotoBarbero } from '../ui/FotoBarbero'
 import { duracionDeCortes } from '../domain/horario'
+import { ESTADOS_ACTIVOS, momentoCita, esperaHasta, tolerancia } from '../domain/citas'
+import { useAhora } from '../domain/hora'
 
 // Citas: el cliente reserva una hora (y si quiere, una silla). Salen en
 // la Pantalla ("Reservada 4:30 p. m.") y al ocupar la silla se elige
@@ -21,15 +23,19 @@ function hora12(hhmm) {
 }
 
 const ESTADOS = {
-  pendiente: { texto: 'Pendiente', clase: 'bg-laton-suave text-laton' },
+  pendiente: { texto: 'Por aceptar', clase: 'bg-laton-suave text-laton' },
+  confirmada: { texto: '✓ Aceptada', clase: 'bg-libre text-white' },
   atendida: { texto: 'Atendida', clase: 'bg-libre-suave text-libre' },
   cancelada: { texto: 'Cancelada', clase: 'bg-ocupada-suave text-ocupada' },
+  'no-llego': { texto: 'No llegó', clase: 'bg-ocupada-suave text-ocupada' },
 }
 
 export default function Citas() {
   const { citas, sillas, servicios, clientes, config, barberos } = useEstado()
   const [dia, setDia] = useState(claveDia())
   const [editando, setEditando] = useState(null) // cita | 'nueva'
+  const [aceptando, setAceptando] = useState(null) // cita
+  const ahora = useAhora(30000)
   const delDia = citas.filter((c) => c.fecha === dia).sort((a, b) => a.hora.localeCompare(b.hora))
   const pendientesProximas = citas.filter((c) => c.estado === 'pendiente' && c.fecha > dia).length
 
@@ -68,10 +74,11 @@ export default function Citas() {
             const silla = sillas.find((s) => s.id === c.sillaId)
             const barbero = barberos.find((b) => b.id === c.barberoId)
             const cortes = servicios.filter((s) => c.servicioIds?.includes(s.id))
-            const mensaje = `Hola ${c.nombre.split(' ')[0]} 👋, te confirmamos tu cita en ${config.nombre} ✂ el ${formatearDia(c.fecha)} a las ${hora12(c.hora)}${cortes.length ? ` (${cortes.map((x) => x.nombre).join(' + ')})` : ''}. ¡Te esperamos! 💈`
-            const wa = linkWhatsapp(c.telefono, mensaje)
+            const wa = linkWhatsapp(c.telefono, mensajeConfirmacion(c, { config, barbero, cortes }))
+            const activa = ESTADOS_ACTIVOS.includes(c.estado)
+            const vencida = activa && momentoCita(c, config, ahora) === 'vencida'
             return (
-              <li key={c.id} className={`overflow-hidden rounded-2xl border bg-panel ${c.estado === 'pendiente' ? 'border-linea' : 'border-linea opacity-70'}`}>
+              <li key={c.id} className={`overflow-hidden rounded-2xl border bg-panel ${vencida ? 'border-ocupada' : c.estado === 'confirmada' ? 'border-libre' : activa ? 'border-laton/60' : 'border-linea opacity-70'}`}>
                 <button type="button" onClick={() => setEditando(c)} className="flex w-full items-center gap-3 p-4 text-left">
                   <span className="cifra shrink-0 text-xl font-extrabold text-laton">{hora12(c.hora)}</span>
                   {barbero && <FotoBarbero barbero={barbero} tam="h-10 w-10" texto="text-sm" />}
@@ -83,15 +90,28 @@ export default function Citas() {
                     </span>
                   </span>
                   <span className="flex shrink-0 flex-col items-end gap-1">
-                    <span className={`rounded-full px-2 py-0.5 text-[11px] font-bold ${ESTADOS[c.estado].clase}`}>{ESTADOS[c.estado].texto}</span>
+                    <span className={`rounded-full px-2 py-0.5 text-[11px] font-bold ${(ESTADOS[c.estado] || ESTADOS.pendiente).clase}`}>{(ESTADOS[c.estado] || ESTADOS.pendiente).texto}</span>
+                    {c.estado === 'confirmada' && silla && <span className="text-[10px] font-bold text-libre">{silla.nombre}</span>}
                     {c.origen === 'web' && <span className="rounded-full bg-panel-2 px-2 py-0.5 text-[10px] font-bold text-tinta-suave">📱 por la web</span>}
                   </span>
                 </button>
-                {c.estado === 'pendiente' && (
+                {vencida && (
+                  <div className="flex items-center justify-between gap-2 border-t border-ocupada/40 bg-ocupada-suave px-4 py-2.5 text-sm">
+                    <span className="font-bold text-ocupada">⌛ Pasaron {tolerancia(config)} min y no llegó</span>
+                    <button type="button" onClick={() => cambiarEstadoCita(c.id, 'no-llego')} className="rounded-lg bg-ocupada px-3 py-1.5 text-xs font-bold text-white">
+                      Liberar su hora
+                    </button>
+                  </div>
+                )}
+                {activa && !vencida && (
                   <div className="grid grid-cols-3 divide-x divide-linea border-t border-linea text-xs font-bold">
-                    {wa ? (
+                    {c.estado === 'pendiente' ? (
+                      <button type="button" onClick={() => setAceptando(c)} className="py-2.5 text-libre">
+                        ✓ Aceptar
+                      </button>
+                    ) : wa ? (
                       <a href={wa} target="_blank" rel="noopener noreferrer" className="py-2.5 text-center text-libre">
-                        💬 Confirmar
+                        💬 Avisarle
                       </a>
                     ) : (
                       <span className="py-2.5 text-center text-tinta-suave/50">Sin celular</span>
@@ -104,12 +124,21 @@ export default function Citas() {
                     </button>
                   </div>
                 )}
+                {c.estado === 'confirmada' && !vencida && (
+                  <p className="border-t border-linea px-4 py-1.5 text-[11px] text-tinta-suave">Se le espera hasta las {esperaHasta(c, config)}.</p>
+                )}
               </li>
             )
           })}
         </ul>
       )}
       {pendientesProximas > 0 && <p className="text-center text-xs text-tinta-suave">Hay {pendientesProximas} citas pendientes en los próximos días (usa ›).</p>}
+
+      {aceptando && (
+        <Hoja titulo={`Aceptar la cita de ${aceptando.nombre}`} subtitulo={`${formatearDia(aceptando.fecha)} · ${hora12(aceptando.hora)}`} onCerrar={() => setAceptando(null)}>
+          <AceptarCita cita={aceptando} sillas={sillas} barberos={barberos} servicios={servicios} config={config} onListo={() => setAceptando(null)} />
+        </Hoja>
+      )}
 
       {editando && (
         <Hoja titulo={editando === 'nueva' ? 'Nueva cita' : 'Cita'} onCerrar={() => setEditando(null)}>
@@ -221,6 +250,62 @@ function FormCita({ cita, diaInicial, sillas, servicios, clientes, barberos, onL
           Borrar cita
         </button>
       )}
+    </div>
+  )
+}
+
+function mensajeConfirmacion(c, { config, barbero, cortes }) {
+  return [
+    `Hola ${c.nombre.split(' ')[0]} 👋, tu cita en *${config.nombre}* ✂ está *confirmada*:`,
+    `📅 ${formatearDia(c.fecha)} a las ${hora12(c.hora)}${barbero ? ` con ${barbero.nombre}` : ''}${cortes.length ? ` (${cortes.map((x) => x.nombre).join(' + ')})` : ''}`,
+    `⌛ Te esperamos hasta ${tolerancia(config)} minutos (${esperaHasta(c, config)}); después la hora queda libre.`,
+    '¡Te esperamos! 💈',
+  ].join('\n')
+}
+
+// Aceptar una cita: en qué silla (si pidió barbero, la de ese barbero) y
+// avisarle por WhatsApp. Desde ahí la silla sale "Reservada" a esa hora.
+function AceptarCita({ cita, sillas, barberos, servicios, config, onListo }) {
+  const sugerida = (cita.sillaId && sillas.find((s) => s.id === cita.sillaId)) || sillas.find((s) => cita.barberoId && s.barberoFijoId === cita.barberoId) || sillas[0]
+  const [sillaId, setSillaId] = useState(sugerida?.id || null)
+  const barbero = barberos.find((b) => b.id === cita.barberoId)
+  const cortes = servicios.filter((s) => cita.servicioIds?.includes(s.id))
+  const wa = linkWhatsapp(cita.telefono, mensajeConfirmacion(cita, { config, barbero, cortes }))
+
+  function aceptar() {
+    aceptarCita(cita.id, sillaId)
+    onListo()
+  }
+
+  return (
+    <div className="space-y-4">
+      {barbero && <p className="text-sm">✂ Pidió a <span className="font-bold">{barbero.nombre}</span></p>}
+      <div>
+        <p className="mb-2 text-xs font-bold uppercase tracking-wide text-tinta-suave">¿En qué silla? (sale "Reservada" a esa hora)</p>
+        <div className="grid grid-cols-2 gap-2">
+          {sillas.map((s) => (
+            <button
+              key={s.id}
+              type="button"
+              onClick={() => setSillaId(s.id)}
+              aria-pressed={sillaId === s.id}
+              className={`rounded-2xl border-2 px-3 py-3 text-left ${sillaId === s.id ? 'border-laton bg-laton-suave' : 'border-linea'}`}
+            >
+              <span className="block font-bold">{s.nombre}</span>
+              <span className="block truncate text-xs text-tinta-suave">{barberos.find((b) => b.id === s.barberoFijoId)?.nombre || 'Sin barbero fijo'}</span>
+            </button>
+          ))}
+        </div>
+      </div>
+      <p className="text-xs text-tinta-suave">Se le espera hasta {tolerancia(config)} min después de su hora (se cambia en Más → Ajustes).</p>
+      {wa ? (
+        <a href={wa} target="_blank" rel="noopener noreferrer" onClick={aceptar} className="block w-full rounded-2xl bg-libre py-4 text-center text-base font-extrabold text-white">
+          ✓ Aceptar y avisarle por WhatsApp
+        </a>
+      ) : null}
+      <button type="button" onClick={aceptar} className={`w-full rounded-2xl py-3.5 font-extrabold ${wa ? 'border border-linea text-tinta-suave' : 'bg-libre text-white'}`}>
+        ✓ Aceptar{wa ? ' sin avisar' : ''}
+      </button>
     </div>
   )
 }

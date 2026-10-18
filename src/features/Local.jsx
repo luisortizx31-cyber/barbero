@@ -6,6 +6,9 @@ import { linkWhatsapp } from '../domain/clientes'
 import { formatearMonto } from '../domain/dinero'
 import { estadoAtencion, proximosDiasAbiertos, horasLibres, duracionDeCortes, duracionDe, hora12 } from '../domain/horario'
 import { FotoBarbero } from '../ui/FotoBarbero'
+import { barberoDeSilla } from '../domain/sillas'
+import { momentoCita, tolerancia } from '../domain/citas'
+import { FotoCorte } from '../ui/FotoCorte'
 import { ElegirBarbero } from '../ui/ElegirBarbero'
 import { ElegirCortes } from '../ui/Cobro'
 import { Hoja } from '../ui/Hoja'
@@ -43,6 +46,7 @@ export default function Local() {
   const { barberiaId } = useSesion()
   const ahora = useAhora(15000)
   const [hoja, setHoja] = useState(null) // 'cita' | 'espera'
+  const [citaCon, setCitaCon] = useState(null) // barbero elegido desde "Nuestros barberos"
   const [miTurno, setMiTurno] = useRecuerdo(`barberia:miturno:${barberiaId}`)
   const [miCita, setMiCita] = useRecuerdo(`barberia:micita:${barberiaId}`)
 
@@ -50,13 +54,16 @@ export default function Local() {
   const libres = sillas.filter((s) => !s.ocupadaDesde)
   const esperas = esperaEstimada(sillas, [...espera, { id: 'yo' }], historial, ahora, servicios)
   const miEspera = esperas.at(-1)
-  const barberoDe = (s) => barberos.find((b) => b.id === s.barberoId) || (s.barbero ? { nombre: s.barbero } : null)
+  const barberoDe = (s) => barberos.find((b) => b.id === barberoDeSilla(s)) || (s.barbero ? { nombre: s.barbero } : null)
   const wa = linkWhatsapp(telefonoBarberia, `Hola ${config.nombre} 👋, quisiera un corte. ¿Tienen sitio?`)
 
   // Mi lugar en la cola (si me anoté desde este celular y sigo ahí).
   const posicion = miTurno ? espera.findIndex((x) => x.id === miTurno.id) : -1
   const esperasCola = esperaEstimada(sillas, espera, historial, ahora, servicios)
   const citaVigente = miCita && miCita.fecha >= claveDia() ? miCita : null
+  // Silla reservada ahora para una cita aceptada (de la agenda pública).
+  const reservaDe = (s) => agenda.find((a) => a.confirmada && a.sillaId === s.id && a.fecha === claveDia() && momentoCita(a, config, ahora) === 'ahora')
+  const cortandoEn = (b) => sillas.find((s) => s.ocupadaDesde && s.barberoId === b.id)
 
   return (
     <div className="mx-auto max-w-md space-y-4 p-4 pb-10">
@@ -100,6 +107,7 @@ export default function Local() {
             {formatearDia(citaVigente.fecha)} · {hora12(citaVigente.hora)}
           </p>
           {citaVigente.barberoNombre && <p className="text-sm">✂ con {citaVigente.barberoNombre}</p>}
+          <p className="mt-1 text-xs font-semibold">⌛ Llega a tiempo: te esperamos máximo {tolerancia(config)} minutos.</p>
           <p className="mt-1 text-xs text-tinta-suave">Para cambiarla o cancelarla, escríbele a la barbería.</p>
         </div>
       )}
@@ -132,7 +140,14 @@ export default function Local() {
       )}
 
       <div className={`grid gap-2 ${atencion.abierto && posicion < 0 ? 'grid-cols-2' : ''}`}>
-        <button type="button" onClick={() => setHoja('cita')} className="rounded-2xl bg-laton py-3.5 font-extrabold text-fondo">
+        <button
+          type="button"
+          onClick={() => {
+            setCitaCon(null)
+            setHoja('cita')
+          }}
+          className="rounded-2xl bg-laton py-3.5 font-extrabold text-fondo"
+        >
           📅 Reservar cita
         </button>
         {atencion.abierto && posicion < 0 && (
@@ -142,21 +157,60 @@ export default function Local() {
         )}
       </div>
 
+      {/* Nuestros barberos: el cliente ve a cada uno (su foto en grande al
+          tocarla) y reserva con el que prefiere. */}
+      {barberos.length > 0 && (
+        <div className="rounded-2xl border border-linea bg-panel p-4">
+          <p className="mb-3 text-xs font-bold uppercase tracking-[0.14em] text-tinta-suave">Nuestros barberos</p>
+          <ul className="grid grid-cols-2 gap-3">
+            {barberos.map((b) => {
+              const silla = cortandoEn(b)
+              return (
+                <li key={b.id} className="flex flex-col items-center gap-1.5 rounded-2xl bg-fondo p-3 text-center">
+                  <FotoBarbero barbero={b} tam="h-20 w-20" texto="text-2xl" ampliable />
+                  <p className="w-full truncate font-extrabold">{b.nombre}</p>
+                  <p className={`text-xs font-bold ${silla ? 'text-ocupada' : 'text-libre'}`}>{silla ? `Cortando en ${silla.nombre}` : 'Disponible'}</p>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setCitaCon(b.id)
+                      setHoja('cita')
+                    }}
+                    className="mt-1 w-full rounded-xl border border-laton/60 py-1.5 text-xs font-bold text-laton"
+                  >
+                    📅 Reservar con {b.nombre.split(' ')[0]}
+                  </button>
+                </li>
+              )
+            })}
+          </ul>
+        </div>
+      )}
+
       <ul className="space-y-3">
         {sillas.map((s) => {
           const ocupada = Boolean(s.ocupadaDesde)
           const b = barberoDe(s)
+          const reserva = !ocupada && reservaDe(s)
           return (
-            <li key={s.id} className={`flex items-center gap-4 rounded-2xl border-2 bg-panel p-4 ${ocupada ? 'border-ocupada' : 'border-libre'}`}>
-              {b ? <FotoBarbero barbero={b} tam="h-16 w-16" texto="text-xl" /> : <span className="flex h-16 w-16 shrink-0 items-center justify-center rounded-full bg-panel-2 text-3xl">💈</span>}
+            <li key={s.id} className={`flex items-center gap-4 rounded-2xl border-2 bg-panel p-4 ${ocupada ? 'border-ocupada' : reserva ? 'border-laton' : 'border-libre'}`}>
+              {b && ocupada ? <FotoBarbero barbero={b} tam="h-16 w-16" texto="text-xl" ampliable /> : <span className="flex h-16 w-16 shrink-0 items-center justify-center rounded-full bg-panel-2 text-3xl">💈</span>}
               <div className="min-w-0 flex-1">
                 <p className="truncate text-lg font-extrabold">{s.nombre}</p>
-                {b && <p className="truncate text-sm">✂ {b.nombre}</p>}
-                <p className={`text-sm font-bold ${ocupada ? 'text-ocupada' : 'text-libre'}`}>
-                  {ocupada ? `Cortando · hace ${formatearDuracion(ahora - new Date(s.ocupadaDesde))}` : s.liberadaEn ? `Libre desde ${formatearHora(s.liberadaEn)}` : 'Libre'}
+                {b && (ocupada ? <p className="truncate text-sm">✂ {b.nombre} cortando</p> : <p className="truncate text-xs text-tinta-suave">Silla de {b.nombre}</p>)}
+                <p className={`text-sm font-bold ${ocupada ? 'text-ocupada' : reserva ? 'text-laton' : 'text-libre'}`}>
+                  {ocupada
+                    ? `Cortando · hace ${formatearDuracion(ahora - new Date(s.ocupadaDesde))}`
+                    : reserva
+                      ? `Reservada para las ${hora12(reserva.hora)}`
+                      : s.liberadaEn
+                        ? `Libre desde ${formatearHora(s.liberadaEn)}`
+                        : 'Libre'}
                 </p>
               </div>
-              <span className={`shrink-0 rounded-full px-2.5 py-1 text-xs font-extrabold uppercase ${ocupada ? 'bg-ocupada text-white' : 'bg-libre text-white'}`}>{ocupada ? 'Ocupada' : 'Libre'}</span>
+              <span className={`shrink-0 rounded-full px-2.5 py-1 text-xs font-extrabold uppercase ${ocupada ? 'bg-ocupada text-white' : reserva ? 'bg-laton text-fondo' : 'bg-libre text-white'}`}>
+                {ocupada ? 'Ocupada' : reserva ? 'Reservada' : 'Libre'}
+              </span>
             </li>
           )
         })}
@@ -168,8 +222,9 @@ export default function Local() {
           <p className="border-b border-linea px-4 py-2.5 text-xs font-bold uppercase tracking-[0.14em] text-tinta-suave">Precios</p>
           <ul className="divide-y divide-linea">
             {servicios.map((x) => (
-              <li key={x.id} className="flex items-center justify-between gap-2 px-4 py-2.5">
-                <span>
+              <li key={x.id} className="flex items-center justify-between gap-3 px-4 py-2.5">
+                <FotoCorte servicio={x} tam="h-14 w-14" ampliable />
+                <span className="min-w-0 flex-1">
                   <span className="block font-bold">{x.nombre}</span>
                   <span className="text-xs text-tinta-suave">⏱ {duracionDe(x)} min</span>
                 </span>
@@ -185,11 +240,12 @@ export default function Local() {
           💬 Escribir a la barbería
         </a>
       )}
-      <p className="text-center text-xs text-tinta-suave">Se actualiza solo. El tiempo es aproximado.</p>
+      <p className="text-center text-xs text-tinta-suave">Toca la foto de un barbero para verla en grande. Se actualiza solo; el tiempo es aproximado.</p>
 
       {hoja === 'cita' && (
         <Hoja titulo="Reservar cita" onCerrar={() => setHoja(null)}>
           <ReservarCita
+            barberoInicial={citaCon}
             estado={{ config, servicios, barberos, agenda, sillas, telefonoBarberia }}
             onReservada={(cita) => setMiCita(cita)}
             onCerrar={() => setHoja(null)}
@@ -227,9 +283,9 @@ function Paso({ n, titulo, children }) {
   )
 }
 
-function ReservarCita({ estado, onReservada, onCerrar }) {
+function ReservarCita({ estado, barberoInicial = null, onReservada, onCerrar }) {
   const { config, servicios, barberos, agenda, sillas, telefonoBarberia } = estado
-  const [barberoId, setBarberoId] = useState(null)
+  const [barberoId, setBarberoId] = useState(barberoInicial)
   const [cortes, setCortes] = useState([])
   const dias = proximosDiasAbiertos(config.horario, 7)
   const [dia, setDia] = useState(dias[0]?.clave ?? null)
@@ -254,7 +310,8 @@ function ReservarCita({ estado, onReservada, onCerrar }) {
           {formatearDia(hecha.fecha)} · <span className="font-bold">{hora12(hecha.hora)}</span>
         </p>
         {barbero && <p>✂ con {barbero.nombre}</p>}
-        <p className="text-sm text-tinta-suave">Te esperamos. Si no puedes venir, avísale a la barbería.</p>
+        <p className="rounded-xl bg-laton-suave px-3 py-2 text-sm font-semibold text-laton">⌛ Te esperamos máximo {tolerancia(config)} minutos. Después tu hora queda libre.</p>
+        <p className="text-sm text-tinta-suave">La barbería te confirmará la cita. Si no puedes venir, avísale.</p>
         {wa && (
           <a href={wa} target="_blank" rel="noopener noreferrer" className="block w-full rounded-2xl bg-libre py-3.5 font-extrabold text-white">
             💬 Avisar a la barbería por WhatsApp
@@ -342,6 +399,7 @@ function ReservarCita({ estado, onReservada, onCerrar }) {
         </div>
       </Paso>
 
+      <p className="text-center text-xs text-tinta-suave">⌛ Se te espera máximo {tolerancia(config)} minutos después de tu hora.</p>
       <button
         type="button"
         disabled={!hora || !nombre.trim() || !telOk}

@@ -39,7 +39,7 @@ import { HORARIO_INICIAL } from '../domain/horario'
 
 export const COLORES = ['#8b1e2d', '#1d1d1f', '#6b3e1f', '#1f4e79', '#2f5d3a', '#c9a227', '#f2ede4']
 
-const CONFIG_INICIAL = { nombre: 'Mi Barbería', comisionPct: 50, fidelidadCada: 6, diasRecordatorio: 21, horario: HORARIO_INICIAL }
+const CONFIG_INICIAL = { nombre: 'Mi Barbería', comisionPct: 50, fidelidadCada: 6, diasRecordatorio: 21, horario: HORARIO_INICIAL, toleranciaCita: 15 }
 
 function nuevoId() {
   return globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`
@@ -285,6 +285,14 @@ function quitarDe(coleccion, id) {
 // `citaId`: si tenía cita, la cita queda atendida.
 export function ocuparSilla(id, { servicioIds = [], clienteId = null, nombre = '', esperaId = null, citaId = null, barberoId } = {}) {
   const barbero = barberoId ? estado.barberos.find((b) => b.id === barberoId) : null
+  // Un barbero no puede estar cortando en dos sillas a la vez (pedido
+  // del usuario, 2026-10-18). La ventana de ocupar ya no lo deja elegir;
+  // esto es por si dos celulares lo intentan al mismo tiempo.
+  const otra = barbero && sillaOcupadaPor(barbero.id, id)
+  if (otra) {
+    alert(`${barbero.nombre} ya está cortando en ${otra.nombre}. Libérala primero.`)
+    return false
+  }
   fijar({
     ...estado,
     sillas: estado.sillas.map((s) =>
@@ -315,7 +323,19 @@ export function liberarSilla(id, cobro = null) {
   fijar({
     ...estado,
     sillas: estado.sillas.map((s) =>
-      s.id === id ? { ...s, ocupadaDesde: null, liberadaEn: fin, clienteId: null, cliente: '', servicioIds: [] } : s
+      s.id === id
+        ? {
+            ...s,
+            ocupadaDesde: null,
+            liberadaEn: fin,
+            clienteId: null,
+            cliente: '',
+            servicioIds: [],
+            // El que cortó se va de la silla (su nombre ya quedó en el historial).
+            barberoId: null,
+            ...(s.barberoId ? { barbero: '' } : {}),
+          }
+        : s
     ),
     productos: descontarStock(estado.productos, cobroFinal?.productos),
     historial: [
@@ -340,6 +360,11 @@ function descontarStock(productos, vendidos = []) {
     const v = vendidos.find((x) => x.id === p.id)
     return v && p.stock != null ? { ...p, stock: Math.max(0, p.stock - v.cantidad) } : p
   })
+}
+
+// La silla (que no sea `menosId`) donde está cortando ahora este barbero.
+export function sillaOcupadaPor(barberoId, menosId = null, sillas = estado?.sillas ?? []) {
+  return sillas.find((s) => s.id !== menosId && s.ocupadaDesde && s.barberoId === barberoId) || null
 }
 
 // --- Barberos ----------------------------------------------------------------
@@ -367,7 +392,9 @@ export function eliminarBarbero(id) {
   fijar({
     ...estado,
     barberos: estado.barberos.filter((b) => b.id !== id),
-    sillas: estado.sillas.some((s) => s.barberoId === id) ? estado.sillas.map((s) => (s.barberoId === id ? { ...s, barberoId: null } : s)) : estado.sillas,
+    sillas: estado.sillas.some((s) => s.barberoId === id || s.barberoFijoId === id)
+      ? estado.sillas.map((s) => (s.barberoId === id || s.barberoFijoId === id ? { ...s, barberoId: s.barberoId === id ? null : s.barberoId, barberoFijoId: s.barberoFijoId === id ? null : s.barberoFijoId } : s))
+      : estado.sillas,
   })
 }
 
@@ -409,6 +436,10 @@ export function eliminarCliente(id) {
 }
 
 // --- Citas --------------------------------------------------------------------
+// Estados: 'pendiente' (pedida, sin aceptar), 'confirmada' (aceptada,
+// con su silla), 'atendida', 'cancelada', 'no-llego' (pasó la tolerancia).
+// Las dos primeras ocupan su hora en la agenda.
+const CITA_ACTIVA = ['pendiente', 'confirmada']
 
 // La agenda es la parte PÚBLICA de las citas (día, hora, duración y
 // barbero, sin nombres ni celulares): con ella la página de clientes
@@ -418,9 +449,18 @@ export function eliminarCliente(id) {
 function agendaDe(citas, agendaActual = []) {
   const actual = new Map(agendaActual.map((x) => [x.id, x]))
   return citas
-    .filter((c) => c.estado === 'pendiente')
+    .filter((c) => CITA_ACTIVA.includes(c.estado))
     .map((c) => {
-      const nuevo = { id: c.id, fecha: c.fecha, hora: c.hora, duracion: Number(c.duracion) || 30, barberoId: c.barberoId || null, sillaId: c.sillaId || null }
+      const nuevo = {
+        id: c.id,
+        fecha: c.fecha,
+        hora: c.hora,
+        duracion: Number(c.duracion) || 30,
+        barberoId: c.barberoId || null,
+        sillaId: c.sillaId || null,
+        // Aceptada por la barbería: su silla sale "Reservada" a esa hora.
+        confirmada: c.estado === 'confirmada',
+      }
       const viejo = actual.get(c.id)
       return viejo && Object.keys(nuevo).every((k) => viejo[k] === nuevo[k]) ? viejo : nuevo
     })
@@ -437,6 +477,12 @@ export function guardarCita(id, datos) {
 
 export function cambiarEstadoCita(id, nuevoEstado) {
   fijar({ ...estado, ...conCitas(estado.citas.map((c) => (c.id === id ? { ...c, estado: nuevoEstado } : c))) })
+}
+
+// La barbería acepta la cita y le asigna su silla: desde ese momento la
+// silla sale "Reservada" a esa hora (pedido del usuario, 2026-10-18).
+export function aceptarCita(id, sillaId) {
+  fijar({ ...estado, ...conCitas(estado.citas.map((c) => (c.id === id ? { ...c, estado: 'confirmada', sillaId: sillaId || c.sillaId || null } : c))) })
 }
 
 export function eliminarCita(id) {
@@ -469,8 +515,8 @@ export function reservarCitaWeb({ fecha, hora, duracion, barberoId, servicioIds,
 
 // --- Cortes y precios -------------------------------------------------------
 
-export function agregarServicio(nombre, precio, duracion = 30) {
-  agregarEn('servicios', { nombre: nombre.trim(), precio: Number(precio) || 0, duracion: Math.max(5, Number(duracion) || 30) })
+export function agregarServicio(nombre, precio, duracion = 30, foto = null) {
+  agregarEn('servicios', { nombre: nombre.trim(), precio: Number(precio) || 0, duracion: Math.max(5, Number(duracion) || 30), foto })
 }
 
 export function guardarServicio(id, datos) {

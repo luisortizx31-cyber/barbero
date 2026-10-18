@@ -4,6 +4,7 @@ import { formatearHora, formatearDuracion } from '../domain/hora'
 import { fidelidad } from '../domain/clientes'
 import { totalProductos } from '../domain/caja'
 import { FotoBarbero } from './FotoBarbero'
+import { FotoCorte } from './FotoCorte'
 
 // Los cortes del local como botones para marcar (se puede elegir más
 // de uno, por ejemplo corte + cejas).
@@ -12,6 +13,7 @@ export function ElegirCortes({ servicios, elegidos, onCambiar }) {
     onCambiar(elegidos.includes(id) ? elegidos.filter((x) => x !== id) : [...elegidos, id])
   }
   if (servicios.length === 0) return <p className="text-sm text-tinta-suave">Todavía no hay cortes. Agrégalos en Más → Cortes.</p>
+  const conFotos = servicios.some((x) => x.foto)
   return (
     <div className="grid grid-cols-2 gap-2">
       {servicios.map((x) => {
@@ -22,13 +24,16 @@ export function ElegirCortes({ servicios, elegidos, onCambiar }) {
             type="button"
             onClick={() => alternar(x.id)}
             aria-pressed={marcado}
-            className={`rounded-2xl border-2 px-3 py-3 text-left transition active:scale-[0.98] ${marcado ? 'border-laton bg-laton-suave' : 'border-linea bg-fondo'}`}
+            className={`overflow-hidden rounded-2xl border-2 text-left transition active:scale-[0.98] ${conFotos ? 'p-0' : 'px-3 py-3'} ${marcado ? 'border-laton bg-laton-suave' : 'border-linea bg-fondo'}`}
           >
+            {conFotos && <FotoCorte servicio={x} tam="h-24 w-full" className="rounded-none" />}
+            <span className={conFotos ? 'block px-3 py-2' : 'contents'}>
             <span className="block text-sm font-bold leading-tight">
               {marcado ? '✓ ' : ''}
               {x.nombre}
             </span>
             <span className="cifra mt-1 block text-base font-extrabold text-laton">{formatearMonto(x.precio)}</span>
+            </span>
           </button>
         )
       })}
@@ -84,7 +89,7 @@ export function ElegirCliente({ clientes, valor, onCambiar, placeholder = 'Nombr
 
 // Al ocupar: quién se sienta (el siguiente de la cola, alguien con
 // cita, un cliente frecuente o uno de paso) y qué corte se va a hacer.
-export function HojaOcupar({ silla, servicios, clientes, espera, citas, barberos = [], barberoInicial = null, onOcupar }) {
+export function HojaOcupar({ silla, sillas: sillasTodas = [], servicios, clientes, espera, citas, barberos = [], barberoInicial = null, onOcupar }) {
   const primerNombre = (id) => barberos.find((b) => b.id === id)?.nombre.split(' ')[0] || ''
   const opciones = [
     ...espera.map((x, i) => ({
@@ -108,9 +113,13 @@ export function HojaOcupar({ silla, servicios, clientes, espera, citas, barberos
   ]
   // De entrada, el primero que puede sentarse en ESTA silla (sin
   // preferencia, o que quiere al barbero de esta silla).
-  const inicial = opciones.find((o) => !o.barberoId || o.barberoId === silla.barberoId) ?? opciones[0]
+  const inicial = opciones.find((o) => !o.barberoId || o.barberoId === silla.barberoFijoId) ?? opciones[0]
   const [elegida, setElegida] = useState(inicial?.clave ?? null)
-  const [barberoId, setBarberoId] = useState(inicial?.barberoId || barberoInicial)
+  // Dónde está cortando cada barbero ahora (no se puede elegir a uno que
+  // ya está cortando en otra silla).
+  const ocupadoEn = (id) => sillasTodas.find((s) => s.id !== silla.id && s.ocupadaDesde && s.barberoId === id) || null
+  const libreONull = (id) => (id && !ocupadoEn(id) ? id : null)
+  const [barberoId, setBarberoId] = useState(libreONull(inicial?.barberoId) || libreONull(barberoInicial))
   const opcion = opciones.find((o) => o.clave === elegida)
   const [cliente, setCliente] = useState({ clienteId: null, nombre: '' })
   const [cortes, setCortes] = useState(() => inicial?.servicioIds ?? [])
@@ -118,11 +127,14 @@ export function HojaOcupar({ silla, servicios, clientes, espera, citas, barberos
   function elegirOpcion(o) {
     setElegida(o?.clave ?? null)
     setCortes(o?.servicioIds ?? [])
-    // Si pidió un barbero, corta ese.
-    if (o?.barberoId) setBarberoId(o.barberoId)
+    // Si pidió un barbero, corta ese (si no está cortando en otra silla).
+    if (o?.barberoId && !ocupadoEn(o.barberoId)) setBarberoId(o.barberoId)
   }
 
   const quien = opcion ?? cliente
+  // Con barberos registrados hay que decir quién corta: si no, la silla
+  // mostraría a su barbero fijo aunque esté cortando en otra.
+  const faltaBarbero = barberos.length > 0 && !barberoId
   const total = servicios.filter((x) => cortes.includes(x.id)).reduce((t, x) => t + x.precio, 0)
 
   return (
@@ -131,18 +143,23 @@ export function HojaOcupar({ silla, servicios, clientes, espera, citas, barberos
         <div>
           <p className="mb-2 text-xs font-bold uppercase tracking-wide text-tinta-suave">¿Quién corta?</p>
           <div className="flex gap-2 overflow-x-auto pb-1">
-            {barberos.map((b) => (
-              <button
-                key={b.id}
-                type="button"
-                onClick={() => setBarberoId(b.id)}
-                aria-pressed={barberoId === b.id}
-                className={`flex w-20 shrink-0 flex-col items-center gap-1 rounded-2xl border-2 p-2 ${barberoId === b.id ? 'border-laton bg-laton-suave' : 'border-linea'}`}
-              >
-                <FotoBarbero barbero={b} tam="h-12 w-12" texto="text-sm" />
-                <span className="w-full truncate text-center text-xs font-bold">{b.nombre.split(' ')[0]}</span>
-              </button>
-            ))}
+            {barberos.map((b) => {
+              const enOtra = ocupadoEn(b.id)
+              return (
+                <button
+                  key={b.id}
+                  type="button"
+                  onClick={() => setBarberoId(b.id)}
+                  disabled={Boolean(enOtra)}
+                  aria-pressed={barberoId === b.id}
+                  className={`flex w-20 shrink-0 flex-col items-center gap-1 rounded-2xl border-2 p-2 disabled:opacity-40 ${barberoId === b.id ? 'border-laton bg-laton-suave' : 'border-linea'}`}
+                >
+                  <FotoBarbero barbero={b} tam="h-12 w-12" texto="text-sm" />
+                  <span className="w-full truncate text-center text-xs font-bold">{b.nombre.split(' ')[0]}</span>
+                  {enOtra && <span className="w-full truncate text-center text-[10px] text-ocupada">en {enOtra.nombre}</span>}
+                </button>
+              )
+            })}
           </div>
         </div>
       )}
@@ -190,12 +207,20 @@ export function HojaOcupar({ silla, servicios, clientes, espera, citas, barberos
         <ElegirCortes servicios={servicios} elegidos={cortes} onCambiar={setCortes} />
       </div>
 
+      {faltaBarbero && (
+        <p className="rounded-xl bg-ocupada-suave px-3 py-2 text-center text-sm text-ocupada">
+          {barberoInicial && ocupadoEn(barberoInicial)
+            ? `${barberos.find((b) => b.id === barberoInicial)?.nombre || 'Ese barbero'} ya está cortando en ${ocupadoEn(barberoInicial).nombre}. Elige quién corta aquí, o libera esa silla primero.`
+            : 'Elige quién va a cortar.'}
+        </p>
+      )}
       <button
         type="button"
+        disabled={faltaBarbero}
         onClick={() =>
           onOcupar({ servicioIds: cortes, clienteId: quien.clienteId ?? null, nombre: quien.nombre ?? '', esperaId: opcion?.esperaId ?? null, citaId: opcion?.citaId ?? null, barberoId })
         }
-        className="w-full rounded-2xl bg-ocupada py-4 text-base font-extrabold text-white active:scale-[0.98]"
+        className="w-full rounded-2xl bg-ocupada py-4 text-base font-extrabold text-white active:scale-[0.98] disabled:opacity-40"
       >
         Ocupar {silla.nombre}
         {quien.nombre ? ` · ${quien.nombre}` : ''}

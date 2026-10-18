@@ -37,6 +37,7 @@ export default function Ajustes() {
       fidelidadCada: Math.max(0, Math.round(Number(datos.fidelidadCada) || 0)),
       diasRecordatorio: Math.max(1, Math.round(Number(datos.diasRecordatorio) || 21)),
       horario,
+      toleranciaCita: Math.min(120, Math.max(0, Math.round(Number(datos.toleranciaCita ?? 15)))),
     })
     setAviso('Guardado.')
   }
@@ -98,6 +99,18 @@ export default function Ajustes() {
               </li>
             ))}
           </ul>
+        </Bloque>
+
+        <Bloque titulo="📅 Citas">
+          <Etiqueta texto="Tiempo máximo que se espera al cliente con cita (minutos)">
+            <div className="flex items-center gap-2">
+              <input type="number" min="0" max="120" step="5" inputMode="numeric" {...campo('toleranciaCita')} className={`${CLASE_INPUT} cifra w-24 text-right`} />
+              <span className="text-tinta-suave">min</span>
+            </div>
+          </Etiqueta>
+          <p className="text-xs text-tinta-suave">
+            Si el cliente no llega en ese tiempo, su silla deja de estar reservada y su hora queda libre. Se le avisa al reservar y al aceptarle la cita.
+          </p>
         </Bloque>
 
         <Bloque titulo="💈 Comisión de los barberos">

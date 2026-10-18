@@ -90,10 +90,11 @@ function EditorSilla({ silla, barberos, primera, ultima }) {
           {barberos.length > 0 ? (
             // Con barberos registrados se elige de la lista (sale su foto).
             <select
-              value={silla.barberoId || ''}
+              value={silla.barberoFijoId || ''}
               onChange={(e) => {
                 const b = barberos.find((x) => x.id === e.target.value)
-                guardarSilla(silla.id, { barberoId: b?.id || null, barbero: b?.nombre || '' })
+                // El barbero FIJO de la silla (el que corta ahora se elige al ocuparla).
+                guardarSilla(silla.id, { barberoFijoId: b?.id || null })
               }}
               aria-label="Barbero de esta silla"
               className="w-full rounded-xl border border-linea bg-fondo px-3 py-2 text-sm text-tinta outline-none focus-visible:border-laton"

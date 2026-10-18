@@ -185,7 +185,7 @@ function AppBarberia() {
   const Componente = PANTALLAS[vista]
   const hoy = new Date()
   const claveHoy = `${hoy.getFullYear()}-${String(hoy.getMonth() + 1).padStart(2, '0')}-${String(hoy.getDate()).padStart(2, '0')}`
-  const citasHoy = citas.filter((c) => c.fecha === claveHoy && c.estado === 'pendiente').length
+  const citasHoy = citas.filter((c) => c.fecha === claveHoy && (c.estado === 'pendiente' || c.estado === 'confirmada')).length
 
   return (
     <div className="min-h-svh pb-20">

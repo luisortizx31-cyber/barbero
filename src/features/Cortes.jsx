@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useEstado, agregarServicio, guardarServicio, eliminarServicio } from '../data/store'
 import { duracionDe } from '../domain/horario'
+import { FotoCorte, SubirFotoCorte } from '../ui/FotoCorte'
 
 // Los cortes y servicios del local con su precio y cuánto duran: se
 // eligen al ocupar una silla y al cobrarla, y la duración sirve para la
@@ -10,14 +11,16 @@ export default function Cortes() {
   const [nombre, setNombre] = useState('')
   const [precio, setPrecio] = useState('')
   const [duracion, setDuracion] = useState('30')
+  const [foto, setFoto] = useState(null)
 
   function agregar(e) {
     e.preventDefault()
     if (!nombre.trim()) return
-    agregarServicio(nombre, precio, duracion)
+    agregarServicio(nombre, precio, duracion, foto)
     setNombre('')
     setPrecio('')
     setDuracion('30')
+    setFoto(null)
   }
 
   return (
@@ -39,9 +42,12 @@ export default function Cortes() {
           />
           <CampoPrecio value={precio} onChange={setPrecio} />
         </div>
-        <div className="mt-2">
+        <div className="mt-2 flex flex-wrap items-center gap-2">
           <CampoMinutos value={duracion} onChange={setDuracion} />
+          <FotoCorte servicio={{ nombre, foto }} tam="h-11 w-11" />
+          <SubirFotoCorte foto={foto} onFoto={setFoto} />
         </div>
+        <p className="mt-1 text-[11px] text-tinta-suave">La foto la ven los clientes al elegir su corte.</p>
         <button type="submit" disabled={!nombre.trim()} className="mt-2 w-full rounded-xl bg-laton py-2.5 font-bold text-fondo disabled:opacity-30">
           + Agregar
         </button>
@@ -105,6 +111,7 @@ function FilaServicio({ servicio }) {
 
   return (
     <li className="flex flex-wrap items-center gap-2 p-3">
+      <FotoCorte servicio={servicio} tam="h-12 w-12" ampliable />
       <input
         value={nombre}
         onChange={(e) => setNombre(e.target.value)}
@@ -122,6 +129,7 @@ function FilaServicio({ servicio }) {
         onChange={setDuracion}
         onBlur={() => Number(duracion) !== duracionDe(servicio) && guardarServicio(servicio.id, { duracion: Math.max(5, Number(duracion) || 30) })}
       />
+      <SubirFotoCorte foto={servicio.foto} onFoto={(f) => guardarServicio(servicio.id, { foto: f })} />
       <button
         type="button"
         onClick={() => confirm(`¿Quitar "${servicio.nombre}"?`) && eliminarServicio(servicio.id)}

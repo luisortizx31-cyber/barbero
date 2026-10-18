@@ -84,7 +84,7 @@ export function FormBarbero({ barbero, onListo, conBorrar, textoBoton = 'Guardar
       <div className="flex items-center gap-4">
         <FotoBarbero barbero={{ nombre: nombre || '?', foto }} tam="h-20 w-20" texto="text-2xl" />
         <div className="flex flex-wrap gap-2">
-          <SubirFotoBarbero foto={foto} onFoto={setFoto} texto="📷 Subir mi foto" />
+          <SubirFotoBarbero foto={foto} onFoto={setFoto} />
           {foto && (
             <button type="button" onClick={() => setFoto(null)} className="rounded-xl border border-linea px-3 py-2 text-sm text-tinta-suave">
               Quitar

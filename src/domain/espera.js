@@ -1,4 +1,5 @@
 import { duracionDeCortes } from './horario'
+import { barberoDeSilla } from './sillas'
 
 // Cuánto le falta a cada uno de la cola para sentarse, aproximado.
 //
@@ -30,7 +31,7 @@ export function esperaEstimada(sillas, espera, historial, ahora, servicios = [])
   }
   const libresEn = sillas.map((s) => (s.ocupadaDesde ? Math.max(0, new Date(s.ocupadaDesde).getTime() + durDe(s.servicioIds) - ahora) : 0))
   return espera.map((x) => {
-    const suyas = x.barberoId ? sillas.map((s, k) => (s.barberoId === x.barberoId ? k : -1)).filter((k) => k >= 0) : []
+    const suyas = x.barberoId ? sillas.map((s, k) => (barberoDeSilla(s) === x.barberoId ? k : -1)).filter((k) => k >= 0) : []
     const candidatas = suyas.length ? suyas : sillas.map((_, k) => k)
     let i = candidatas[0]
     for (const k of candidatas) if (libresEn[k] < libresEn[i]) i = k
