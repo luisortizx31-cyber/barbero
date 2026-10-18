@@ -85,19 +85,41 @@ export function ElegirCliente({ clientes, valor, onCambiar, placeholder = 'Nombr
 // Al ocupar: quién se sienta (el siguiente de la cola, alguien con
 // cita, un cliente frecuente o uno de paso) y qué corte se va a hacer.
 export function HojaOcupar({ silla, servicios, clientes, espera, citas, barberos = [], barberoInicial = null, onOcupar }) {
-  const [barberoId, setBarberoId] = useState(barberoInicial)
+  const primerNombre = (id) => barberos.find((b) => b.id === id)?.nombre.split(' ')[0] || ''
   const opciones = [
-    ...espera.map((x, i) => ({ clave: `e-${x.id}`, etiqueta: `${i === 0 ? '⏳ Sigue: ' : '⏳ '}${x.nombre}`, nombre: x.nombre, clienteId: x.clienteId, servicioIds: x.servicioIds, esperaId: x.id })),
-    ...citas.map((c) => ({ clave: `c-${c.id}`, etiqueta: `📅 ${c.hora} ${c.nombre}`, nombre: c.nombre, clienteId: c.clienteId, servicioIds: c.servicioIds, citaId: c.id })),
+    ...espera.map((x, i) => ({
+      clave: `e-${x.id}`,
+      etiqueta: `${i === 0 ? '⏳ Sigue: ' : '⏳ '}${x.nombre}${x.barberoId ? ` (quiere a ${primerNombre(x.barberoId)})` : ''}`,
+      nombre: x.nombre,
+      clienteId: x.clienteId,
+      servicioIds: x.servicioIds,
+      esperaId: x.id,
+      barberoId: x.barberoId || null,
+    })),
+    ...citas.map((c) => ({
+      clave: `c-${c.id}`,
+      etiqueta: `📅 ${c.hora} ${c.nombre}${c.barberoId ? ` (con ${primerNombre(c.barberoId)})` : ''}`,
+      nombre: c.nombre,
+      clienteId: c.clienteId,
+      servicioIds: c.servicioIds,
+      citaId: c.id,
+      barberoId: c.barberoId || null,
+    })),
   ]
-  const [elegida, setElegida] = useState(opciones[0]?.clave ?? null)
+  // De entrada, el primero que puede sentarse en ESTA silla (sin
+  // preferencia, o que quiere al barbero de esta silla).
+  const inicial = opciones.find((o) => !o.barberoId || o.barberoId === silla.barberoId) ?? opciones[0]
+  const [elegida, setElegida] = useState(inicial?.clave ?? null)
+  const [barberoId, setBarberoId] = useState(inicial?.barberoId || barberoInicial)
   const opcion = opciones.find((o) => o.clave === elegida)
   const [cliente, setCliente] = useState({ clienteId: null, nombre: '' })
-  const [cortes, setCortes] = useState(() => opciones[0]?.servicioIds ?? [])
+  const [cortes, setCortes] = useState(() => inicial?.servicioIds ?? [])
 
   function elegirOpcion(o) {
     setElegida(o?.clave ?? null)
     setCortes(o?.servicioIds ?? [])
+    // Si pidió un barbero, corta ese.
+    if (o?.barberoId) setBarberoId(o.barberoId)
   }
 
   const quien = opcion ?? cliente

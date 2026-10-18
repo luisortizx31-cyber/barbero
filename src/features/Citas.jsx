@@ -5,6 +5,9 @@ import { linkWhatsapp } from '../domain/clientes'
 import { formatearMonto } from '../domain/dinero'
 import { Hoja } from '../ui/Hoja'
 import { ElegirCliente, ElegirCortes } from '../ui/Cobro'
+import { ElegirBarbero } from '../ui/ElegirBarbero'
+import { FotoBarbero } from '../ui/FotoBarbero'
+import { duracionDeCortes } from '../domain/horario'
 
 // Citas: el cliente reserva una hora (y si quiere, una silla). Salen en
 // la Pantalla ("Reservada 4:30 p. m.") y al ocupar la silla se elige
@@ -24,7 +27,7 @@ const ESTADOS = {
 }
 
 export default function Citas() {
-  const { citas, sillas, servicios, clientes, config } = useEstado()
+  const { citas, sillas, servicios, clientes, config, barberos } = useEstado()
   const [dia, setDia] = useState(claveDia())
   const [editando, setEditando] = useState(null) // cita | 'nueva'
   const delDia = citas.filter((c) => c.fecha === dia).sort((a, b) => a.hora.localeCompare(b.hora))
@@ -63,6 +66,7 @@ export default function Citas() {
         <ul className="space-y-2">
           {delDia.map((c) => {
             const silla = sillas.find((s) => s.id === c.sillaId)
+            const barbero = barberos.find((b) => b.id === c.barberoId)
             const cortes = servicios.filter((s) => c.servicioIds?.includes(s.id))
             const mensaje = `Hola ${c.nombre.split(' ')[0]} 👋, te confirmamos tu cita en ${config.nombre} ✂ el ${formatearDia(c.fecha)} a las ${hora12(c.hora)}${cortes.length ? ` (${cortes.map((x) => x.nombre).join(' + ')})` : ''}. ¡Te esperamos! 💈`
             const wa = linkWhatsapp(c.telefono, mensaje)
@@ -70,14 +74,18 @@ export default function Citas() {
               <li key={c.id} className={`overflow-hidden rounded-2xl border bg-panel ${c.estado === 'pendiente' ? 'border-linea' : 'border-linea opacity-70'}`}>
                 <button type="button" onClick={() => setEditando(c)} className="flex w-full items-center gap-3 p-4 text-left">
                   <span className="cifra shrink-0 text-xl font-extrabold text-laton">{hora12(c.hora)}</span>
+                  {barbero && <FotoBarbero barbero={barbero} tam="h-10 w-10" texto="text-sm" />}
                   <span className="min-w-0 flex-1">
                     <span className="block truncate font-bold">{c.nombre}</span>
                     <span className="block truncate text-xs text-tinta-suave">
-                      {silla ? silla.nombre : 'Cualquier silla'}
+                      {barbero ? `✂ ${barbero.nombre}` : silla ? silla.nombre : 'Cualquier barbero'}
                       {cortes.length ? ` · ${cortes.map((x) => x.nombre).join(' + ')} · ${formatearMonto(cortes.reduce((t, x) => t + x.precio, 0))}` : ''}
                     </span>
                   </span>
-                  <span className={`shrink-0 rounded-full px-2 py-0.5 text-[11px] font-bold ${ESTADOS[c.estado].clase}`}>{ESTADOS[c.estado].texto}</span>
+                  <span className="flex shrink-0 flex-col items-end gap-1">
+                    <span className={`rounded-full px-2 py-0.5 text-[11px] font-bold ${ESTADOS[c.estado].clase}`}>{ESTADOS[c.estado].texto}</span>
+                    {c.origen === 'web' && <span className="rounded-full bg-panel-2 px-2 py-0.5 text-[10px] font-bold text-tinta-suave">📱 por la web</span>}
+                  </span>
                 </button>
                 {c.estado === 'pendiente' && (
                   <div className="grid grid-cols-3 divide-x divide-linea border-t border-linea text-xs font-bold">
@@ -105,14 +113,15 @@ export default function Citas() {
 
       {editando && (
         <Hoja titulo={editando === 'nueva' ? 'Nueva cita' : 'Cita'} onCerrar={() => setEditando(null)}>
-          <FormCita cita={editando === 'nueva' ? null : editando} diaInicial={dia} sillas={sillas} servicios={servicios} clientes={clientes} onListo={() => setEditando(null)} />
+          <FormCita cita={editando === 'nueva' ? null : editando} diaInicial={dia} sillas={sillas} servicios={servicios} clientes={clientes} barberos={barberos} onListo={() => setEditando(null)} />
         </Hoja>
       )}
     </div>
   )
 }
 
-function FormCita({ cita, diaInicial, sillas, servicios, clientes, onListo }) {
+function FormCita({ cita, diaInicial, sillas, servicios, clientes, barberos, onListo }) {
+  const [barberoId, setBarberoId] = useState(cita?.barberoId || null)
   const [fecha, setFecha] = useState(cita?.fecha || diaInicial)
   const [hora, setHora] = useState(cita?.hora || '10:00')
   const [sillaId, setSillaId] = useState(cita?.sillaId || '')
@@ -128,7 +137,17 @@ function FormCita({ cita, diaInicial, sillas, servicios, clientes, onListo }) {
   function guardar() {
     let { clienteId } = cliente
     if (!clienteId && guardarFrecuente) clienteId = guardarCliente(null, { nombre: cliente.nombre, telefono, servicioIds: cortes }).id
-    guardarCita(cita?.id ?? null, { fecha, hora, sillaId: sillaId || null, clienteId, nombre: cliente.nombre.trim() || 'Cliente', telefono, servicioIds: cortes })
+    guardarCita(cita?.id ?? null, {
+      fecha,
+      hora,
+      sillaId: sillaId || null,
+      barberoId: barberoId || null,
+      duracion: duracionDeCortes(servicios, cortes) ?? 30,
+      clienteId,
+      nombre: cliente.nombre.trim() || 'Cliente',
+      telefono,
+      servicioIds: cortes,
+    })
     onListo()
   }
 
@@ -164,6 +183,12 @@ function FormCita({ cita, diaInicial, sillas, servicios, clientes, onListo }) {
           <input type="checkbox" checked={guardarFrecuente} onChange={(e) => setGuardarFrecuente(e.target.checked)} className="h-4 w-4" />
           Guardarlo como cliente frecuente
         </label>
+      )}
+      {barberos.length > 0 && (
+        <div>
+          <p className="mb-2 text-xs font-bold uppercase tracking-wide text-tinta-suave">¿Con qué barbero?</p>
+          <ElegirBarbero barberos={barberos} valor={barberoId} onCambiar={setBarberoId} />
+        </div>
       )}
       <select value={sillaId} onChange={(e) => setSillaId(e.target.value)} aria-label="Silla" className="w-full rounded-xl border border-linea bg-fondo px-3 py-2.5 text-tinta outline-none focus-visible:border-laton">
         <option value="">Cualquier silla</option>

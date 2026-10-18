@@ -18,10 +18,15 @@ import { db } from './firebase'
 // escribe solo lo que cambió.
 
 export const CAMPOS_PRINCIPALES = ['config', 'servicios', 'sillas', 'espera']
-export const COLECCIONES_NUBE = ['historial', 'clientes', 'citas', 'productos', 'ventas', 'gastos', 'cierres', 'barberos']
+export const COLECCIONES_NUBE = ['historial', 'clientes', 'citas', 'productos', 'ventas', 'gastos', 'cierres', 'barberos', 'agenda']
 // Lo que ven sin cuenta (barberos, televisor, clientes): los barberos,
-// para mostrar su foto y su nombre en cada silla.
-export const COLECCIONES_PUBLICAS = ['barberos']
+// para mostrar su foto y su nombre en cada silla, y la agenda (las horas
+// ya reservadas, sin datos de nadie) para reservar citas.
+export const COLECCIONES_PUBLICAS = ['barberos', 'agenda']
+// Lo que se puede escribir sin cuenta (ver firestore.rules). Sin cuenta
+// nunca se escribe nada más, aunque algo haya cambiado por dentro.
+const PRINCIPALES_PUBLICOS = ['sillas', 'espera']
+const COLECCIONES_ESCRIBIBLES_SIN_CUENTA = ['historial', 'barberos', 'citas', 'agenda']
 
 // cierres se identifican por el día
 const idDe = (coleccion, item) => (coleccion === 'cierres' ? item.dia : item.id)
@@ -29,6 +34,7 @@ const idDe = (coleccion, item) => (coleccion === 'cierres' ? item.dia : item.id)
 const ORDEN = {
   historial: (a, b) => a.fin.localeCompare(b.fin),
   ventas: (a, b) => a.fecha.localeCompare(b.fecha),
+  agenda: (a, b) => `${a.fecha} ${a.hora}`.localeCompare(`${b.fecha} ${b.hora}`),
   gastos: (a, b) => a.fecha.localeCompare(b.fecha),
   clientes: (a, b) => (a.creadoEn || '').localeCompare(b.creadoEn || ''),
   productos: (a, b) => (a.nombre || '').localeCompare(b.nombre || ''),
@@ -83,15 +89,19 @@ export function escucharBarberia(id, alCambiar, alListo, alError, colecciones = 
 // la forma de `estado`). Se compara por referencia: store.js nunca
 // modifica un objeto, siempre crea uno nuevo, así que lo que no cambió
 // es el mismo objeto.
-export async function guardarCambios(id, antes, despues) {
+export async function guardarCambios(id, antes, despues, { publico = false } = {}) {
   const raiz = doc(db, 'barberias', id)
   const operaciones = []
 
   const principal = {}
-  for (const c of CAMPOS_PRINCIPALES) if (!antes || antes[c] !== despues[c]) principal[c] = despues[c]
+  for (const c of CAMPOS_PRINCIPALES) {
+    if (publico && !PRINCIPALES_PUBLICOS.includes(c)) continue
+    if (!antes || antes[c] !== despues[c]) principal[c] = despues[c]
+  }
   if (Object.keys(principal).length) operaciones.push((b) => b.set(raiz, principal, { merge: true }))
 
   for (const c of COLECCIONES_NUBE) {
+    if (publico && !COLECCIONES_ESCRIBIBLES_SIN_CUENTA.includes(c)) continue
     const viejos = antes?.[c] ?? []
     const nuevos = despues[c] ?? []
     if (viejos === nuevos) continue

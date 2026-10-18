@@ -3,6 +3,7 @@ import { onAuthStateChanged, signInWithEmailAndPassword, sendPasswordResetEmail,
 import { auth } from './firebase'
 import { escucharBarberia, guardarCambios, COLECCIONES_PUBLICAS } from './nube'
 import { SUPER_UID, obtenerPerfil } from './plataforma'
+import { HORARIO_INICIAL } from '../domain/horario'
 
 // Todo lo de la barbería: el estado y las acciones que lo cambian.
 // Al principio vivía solo en este equipo (localStorage); desde el
@@ -38,7 +39,7 @@ import { SUPER_UID, obtenerPerfil } from './plataforma'
 
 export const COLORES = ['#8b1e2d', '#1d1d1f', '#6b3e1f', '#1f4e79', '#2f5d3a', '#c9a227', '#f2ede4']
 
-const CONFIG_INICIAL = { nombre: 'Mi Barbería', comisionPct: 50, fidelidadCada: 6, diasRecordatorio: 21 }
+const CONFIG_INICIAL = { nombre: 'Mi Barbería', comisionPct: 50, fidelidadCada: 6, diasRecordatorio: 21, horario: HORARIO_INICIAL }
 
 function nuevoId() {
   return globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`
@@ -62,18 +63,18 @@ function sillaNueva(n) {
 // Cortes de partida (pedido del usuario, 2026-10-17: "elegir un
 // corte" y cobrar la silla); se cambian en Cortes.
 const SERVICIOS_INICIALES = [
-  ['Corte clásico', 15],
-  ['Degradado (fade)', 20],
-  ['Corte + barba', 25],
-  ['Barba', 10],
-  ['Corte de niño', 12],
+  ['Corte clásico', 15, 30],
+  ['Degradado (fade)', 20, 40],
+  ['Corte + barba', 25, 50],
+  ['Barba', 10, 20],
+  ['Corte de niño', 12, 25],
 ]
 
 function serviciosIniciales() {
-  return SERVICIOS_INICIALES.map(([nombre, precio]) => ({ id: nuevoId(), nombre, precio }))
+  return SERVICIOS_INICIALES.map(([nombre, precio, duracion]) => ({ id: nuevoId(), nombre, precio, duracion }))
 }
 
-const COLECCIONES = ['historial', 'clientes', 'espera', 'citas', 'productos', 'ventas', 'gastos', 'cierres', 'barberos']
+const COLECCIONES = ['historial', 'clientes', 'espera', 'citas', 'productos', 'ventas', 'gastos', 'cierres', 'barberos', 'agenda']
 
 // Completa lo que le falte a un estado guardado por una versión anterior.
 // Lo que ya está completo se deja tal cual (mismo objeto): así al guardar
@@ -122,7 +123,7 @@ function fijar(nuevo) {
   estado = nuevo
   avisar()
   if (!barberiaId) return
-  guardarCambios(barberiaId, antes, nuevo).catch((err) => {
+  guardarCambios(barberiaId, antes, nuevo, { publico: sesion.modo !== 'panel' }).catch((err) => {
     console.error('[store] guardar en la nube', err)
     alert(`No se pudo guardar: ${err.message}`)
   })
@@ -151,6 +152,12 @@ function conectar(id, { completa, inicializar }) {
         sesion = { ...sesion, cargando: false, listo: true }
         estado = completar(armado)
         avisar()
+        // Citas de antes de que existiera la agenda pública: el dueño la
+        // completa al entrar, para que esas horas no se puedan reservar.
+        if (completa) {
+          const agenda = agendaDe(estado.citas, estado.agenda)
+          if (agenda.length !== estado.agenda.length || agenda.some((x, i) => x !== estado.agenda[i])) fijar({ ...estado, agenda })
+        }
       } else if (inicializar) {
         // Barbería recién creada: arranca limpia. (Antes se subía lo que el
         // equipo tenía guardado de cuando todo era local, y una barbería
@@ -293,7 +300,7 @@ export function ocuparSilla(id, { servicioIds = [], clienteId = null, nombre = '
         : s
     ),
     espera: esperaId ? estado.espera.filter((x) => x.id !== esperaId) : estado.espera,
-    citas: citaId ? estado.citas.map((c) => (c.id === citaId ? { ...c, estado: 'atendida' } : c)) : estado.citas,
+    ...(citaId ? conCitas(estado.citas.map((c) => (c.id === citaId ? { ...c, estado: 'atendida' } : c))) : {}),
   })
 }
 
@@ -366,8 +373,11 @@ export function eliminarBarbero(id) {
 
 // --- Cola de espera --------------------------------------------------------
 
-export function anotarEnEspera({ clienteId = null, nombre = '', servicioIds = [] }) {
-  agregarEn('espera', { clienteId, nombre: nombre.trim() || 'Cliente', servicioIds, llegada: new Date().toISOString() })
+// `barberoId`: el barbero que prefiere (o null, cualquiera). `web`: se
+// anotó solo desde la página de clientes. Devuelve el anotado (la página
+// de clientes lo recuerda para mostrarle su turno).
+export function anotarEnEspera({ clienteId = null, nombre = '', servicioIds = [], barberoId = null, web = false }) {
+  return agregarEn('espera', { clienteId, nombre: nombre.trim() || 'Cliente', servicioIds, barberoId, web, llegada: new Date().toISOString() })
 }
 
 export function quitarDeEspera(id) {
@@ -400,23 +410,67 @@ export function eliminarCliente(id) {
 
 // --- Citas --------------------------------------------------------------------
 
+// La agenda es la parte PÚBLICA de las citas (día, hora, duración y
+// barbero, sin nombres ni celulares): con ella la página de clientes
+// sabe qué horas están libres. Se rehace cada vez que cambian las citas;
+// solo las pendientes ocupan lugar. Lo que no cambió queda igual (mismo
+// objeto), así no se reescribe en la nube.
+function agendaDe(citas, agendaActual = []) {
+  const actual = new Map(agendaActual.map((x) => [x.id, x]))
+  return citas
+    .filter((c) => c.estado === 'pendiente')
+    .map((c) => {
+      const nuevo = { id: c.id, fecha: c.fecha, hora: c.hora, duracion: Number(c.duracion) || 30, barberoId: c.barberoId || null, sillaId: c.sillaId || null }
+      const viejo = actual.get(c.id)
+      return viejo && Object.keys(nuevo).every((k) => viejo[k] === nuevo[k]) ? viejo : nuevo
+    })
+}
+
+function conCitas(citas) {
+  return { citas, agenda: agendaDe(citas, estado.agenda) }
+}
+
 export function guardarCita(id, datos) {
-  if (id) cambiarEn('citas', id, datos)
-  else agregarEn('citas', { estado: 'pendiente', ...datos })
+  const citas = id ? estado.citas.map((c) => (c.id === id ? { ...c, ...datos } : c)) : [...estado.citas, { id: nuevoId(), estado: 'pendiente', ...datos }]
+  fijar({ ...estado, ...conCitas(citas) })
 }
 
 export function cambiarEstadoCita(id, nuevoEstado) {
-  cambiarEn('citas', id, { estado: nuevoEstado })
+  fijar({ ...estado, ...conCitas(estado.citas.map((c) => (c.id === id ? { ...c, estado: nuevoEstado } : c))) })
 }
 
 export function eliminarCita(id) {
-  quitarDe('citas', id)
+  fijar({ ...estado, ...conCitas(estado.citas.filter((c) => c.id !== id)) })
+}
+
+// Cita reservada por el cliente desde la página de clientes (sin
+// cuenta): la cita (privada, con su celular) y su lugar en la agenda
+// (pública). El dueño la ve en Citas marcada "por la web".
+export function reservarCitaWeb({ fecha, hora, duracion, barberoId, servicioIds, nombre, telefono }) {
+  const cita = {
+    id: nuevoId(),
+    fecha,
+    hora,
+    duracion: Number(duracion) || 30,
+    barberoId: barberoId || null,
+    sillaId: null,
+    clienteId: null,
+    nombre: nombre.trim(),
+    telefono: String(telefono || '').replace(/[^\d+]/g, ''),
+    servicioIds,
+    estado: 'pendiente',
+    origen: 'web',
+    creadaEn: new Date().toISOString(),
+  }
+  const lugar = { id: cita.id, fecha, hora, duracion: cita.duracion, barberoId: cita.barberoId, sillaId: null }
+  fijar({ ...estado, citas: [...estado.citas, cita], agenda: [...estado.agenda, lugar] })
+  return cita
 }
 
 // --- Cortes y precios -------------------------------------------------------
 
-export function agregarServicio(nombre, precio) {
-  agregarEn('servicios', { nombre: nombre.trim(), precio: Number(precio) || 0 })
+export function agregarServicio(nombre, precio, duracion = 30) {
+  agregarEn('servicios', { nombre: nombre.trim(), precio: Number(precio) || 0, duracion: Math.max(5, Number(duracion) || 30) })
 }
 
 export function guardarServicio(id, datos) {

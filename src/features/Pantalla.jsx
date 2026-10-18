@@ -7,6 +7,7 @@ import { SillaImagen } from '../ui/SillaDibujo'
 import { Hoja } from '../ui/Hoja'
 import { HojaOcupar, HojaCobrar, ElegirCliente, ElegirCortes } from '../ui/Cobro'
 import { FotoBarbero } from '../ui/FotoBarbero'
+import { ElegirBarbero } from '../ui/ElegirBarbero'
 
 // La pantalla del local: todas las sillas, cuáles están ocupadas (desde
 // qué hora y cuánto llevan) y cuáles están libres (desde qué hora se
@@ -54,7 +55,19 @@ export default function Pantalla({ pantallaCompleta, onPantallaCompleta, soloVer
 
   const libres = sillas.filter((s) => !s.ocupadaDesde)
   const reloj = new Date(ahora).toLocaleTimeString('es-PE', { hour: 'numeric', minute: '2-digit', hour12: true })
-  const esperas = esperaEstimada(sillas, espera, historial, ahora)
+  const esperas = esperaEstimada(sillas, espera, historial, ahora, servicios)
+  const nombreBarbero = (id) => barberos.find((b) => b.id === id)?.nombre || ''
+  // Quién pasa y a qué silla: el primero de la cola que pueda sentarse en
+  // una silla libre - si pidió un barbero, en la silla de ese barbero (si
+  // ese barbero no tiene silla hoy, en cualquiera).
+  const tieneSilla = (barberoId) => sillas.some((s) => s.barberoId === barberoId)
+  const siguiente = (() => {
+    for (const x of espera) {
+      const silla = libres.find((s) => !x.barberoId || s.barberoId === x.barberoId || !tieneSilla(x.barberoId))
+      if (silla) return { x, silla }
+    }
+    return null
+  })()
 
   // Citas de hoy que todavía no llegan (las de hace más de 1 h ya no).
   const hoy = claveDia()
@@ -62,8 +75,10 @@ export default function Pantalla({ pantallaCompleta, onPantallaCompleta, soloVer
     .filter((c) => c.fecha === hoy && c.estado === 'pendiente' && msDeHora(c.hora) > ahora - 60 * 60000)
     .sort((a, b) => a.hora.localeCompare(b.hora))
   // La próxima cita de una silla (en las próximas 2 horas).
-  const citaDeSilla = (id) => citasHoy.find((c) => c.sillaId === id && msDeHora(c.hora) < ahora + 120 * 60000)
-  const citasParaOcupar = (id) => citasHoy.filter((c) => !c.sillaId || c.sillaId === id)
+  // Una cita es de una silla si la pidió para esa silla o con el barbero de esa silla.
+  const esDeSilla = (c, id) => c.sillaId === id || (c.barberoId && sillas.find((s) => s.id === id)?.barberoId === c.barberoId)
+  const citaDeSilla = (id) => citasHoy.find((c) => esDeSilla(c, id) && msDeHora(c.hora) < ahora + 120 * 60000)
+  const citasParaOcupar = (id) => citasHoy.filter((c) => (!c.sillaId && !c.barberoId) || esDeSilla(c, id) || (c.barberoId && !tieneSilla(c.barberoId)))
 
   return (
     <div>
@@ -94,17 +109,18 @@ export default function Pantalla({ pantallaCompleta, onPantallaCompleta, soloVer
       </div>
 
       {/* Hay silla libre y gente esperando: ¡que pase el siguiente! */}
-      {libres.length > 0 && espera.length > 0 && (
+      {siguiente && (
         <button
           type="button"
           disabled={soloVer}
-          onClick={() => setHoja({ tipo: 'ocupar', sillaId: libres[0].id })}
+          onClick={() => setHoja({ tipo: 'ocupar', sillaId: siguiente.silla.id })}
           className="mb-4 flex w-full items-center justify-between gap-3 rounded-2xl bg-laton px-4 py-3 text-left text-fondo"
         >
           <span>
             <span className="block text-xs font-bold uppercase tracking-wide">Siguiente</span>
             <span className={`block font-extrabold ${pantallaCompleta ? 'text-3xl' : 'text-xl'}`}>
-              {espera[0].nombre} → {libres[0].nombre}
+              {siguiente.x.nombre} → {siguiente.silla.nombre}
+              {siguiente.x.barberoId ? ` (con ${nombreBarbero(siguiente.x.barberoId).split(' ')[0]})` : ''}
             </span>
           </span>
           {!soloVer && <span className="shrink-0 text-sm font-bold">Sentar ›</span>}
@@ -155,7 +171,8 @@ export default function Pantalla({ pantallaCompleta, onPantallaCompleta, soloVer
                   <div className="min-w-0 flex-1">
                     <p className={`truncate font-bold ${pantallaCompleta ? 'text-2xl' : ''}`}>{x.nombre}</p>
                     <p className="text-xs text-tinta-suave">
-                      Llegó {formatearHora(x.llegada)}
+                      {x.web ? '📱 ' : ''}Llegó {formatearHora(x.llegada)}
+                      {x.barberoId ? ` · quiere a ${nombreBarbero(x.barberoId).split(' ')[0]}` : ''}
                       {x.servicioIds?.length ? ` · ${servicios.filter((s) => x.servicioIds.includes(s.id)).map((s) => s.nombre).join(' + ')}` : ''}
                     </p>
                   </div>
@@ -258,6 +275,7 @@ export default function Pantalla({ pantallaCompleta, onPantallaCompleta, soloVer
           <AnotarEspera
             clientes={clientes}
             servicios={servicios}
+            barberos={barberos}
             onAnotar={(datos) => {
               accion(`${datos.nombre || 'Cliente'} anotado en la espera`, () => anotarEnEspera(datos))
               setHoja(null)
@@ -285,7 +303,8 @@ export default function Pantalla({ pantallaCompleta, onPantallaCompleta, soloVer
   )
 }
 
-function AnotarEspera({ clientes, servicios, onAnotar }) {
+function AnotarEspera({ clientes, servicios, barberos, onAnotar }) {
+  const [barberoId, setBarberoId] = useState(null)
   const [cliente, setCliente] = useState({ clienteId: null, nombre: '' })
   const [cortes, setCortes] = useState([])
   const [telefono, setTelefono] = useState('')
@@ -295,7 +314,7 @@ function AnotarEspera({ clientes, servicios, onAnotar }) {
     let { clienteId } = cliente
     // Si se pidió, queda como cliente frecuente.
     if (!clienteId && guardar && cliente.nombre.trim()) clienteId = guardarCliente(null, { nombre: cliente.nombre, telefono, servicioIds: cortes }).id
-    onAnotar({ clienteId, nombre: cliente.nombre, servicioIds: cortes })
+    onAnotar({ clienteId, nombre: cliente.nombre, servicioIds: cortes, barberoId })
   }
 
   return (
@@ -326,6 +345,12 @@ function AnotarEspera({ clientes, servicios, onAnotar }) {
               className="mt-2 w-full rounded-xl border border-linea bg-panel px-3 py-2.5 text-tinta outline-none focus-visible:border-laton"
             />
           )}
+        </div>
+      )}
+      {barberos.length > 0 && (
+        <div>
+          <p className="mb-2 text-xs font-bold uppercase tracking-wide text-tinta-suave">¿Con qué barbero? (si tiene preferido)</p>
+          <ElegirBarbero barberos={barberos} valor={barberoId} onCambiar={setBarberoId} />
         </div>
       )}
       <div>

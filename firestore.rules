@@ -71,9 +71,30 @@ service cloud.firestore {
         allow delete: if esDuenoDe(barberiaId);
       }
 
+      // Citas: el cliente la reserva desde la página de clientes (sin
+      // cuenta) - solo puede CREARLA, pendiente y marcada "web"; verla,
+      // cambiarla o borrarla es del dueño (tiene su celular).
+      match /citas/{id} {
+        allow read, update, delete: if esDuenoDe(barberiaId);
+        allow create: if esDuenoDe(barberiaId)
+          || (request.resource.data.id == id && request.resource.data.estado == 'pendiente' && request.resource.data.origen == 'web'
+              && request.resource.data.nombre is string && request.resource.data.nombre.size() > 0 && request.resource.data.nombre.size() <= 80
+              && request.resource.data.fecha is string && request.resource.data.hora is string);
+      }
+
+      // Agenda: la parte pública de las citas (día, hora, duración y
+      // barbero, sin datos de nadie), para mostrar las horas libres.
+      match /agenda/{id} {
+        allow read: if true;
+        allow create: if esDuenoDe(barberiaId)
+          || (request.resource.data.id == id
+              && request.resource.data.keys().hasOnly(['id', 'fecha', 'hora', 'duracion', 'barberoId', 'sillaId']));
+        allow update, delete: if esDuenoDe(barberiaId);
+      }
+
       match /{coleccion}/{id} {
         allow read, write: if esDuenoDe(barberiaId)
-          && coleccion in ['clientes', 'citas', 'productos', 'ventas', 'gastos', 'cierres'];
+          && coleccion in ['clientes', 'productos', 'ventas', 'gastos', 'cierres'];
       }
     }
 

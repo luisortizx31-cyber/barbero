@@ -2,6 +2,7 @@ import { useRef, useState } from 'react'
 import { useEstado, useSesion, guardarConfig, exportarCopia, importarCopia, pesoGuardado, salir } from '../data/store'
 import { claveDia } from '../domain/hora'
 import { enlaces } from '../data/plataforma'
+import { HORARIO_INICIAL, NOMBRES_DIAS } from '../domain/horario'
 
 // Ajustes del local: nombre, comisión de los barberos, tarjeta de
 // fidelidad, cuándo recordar a los clientes, y la copia de seguridad
@@ -12,6 +13,11 @@ export default function Ajustes() {
   const { usuario, barberiaId } = useSesion()
   const e = enlaces(barberiaId)
   const [datos, setDatos] = useState({ ...config })
+  const [horario, setHorario] = useState(() => ({ ...HORARIO_INICIAL, ...config.horario }))
+  const cambiarDia = (d, cambios) => {
+    setHorario((h) => ({ ...h, [d]: { ...h[d], ...cambios } }))
+    setAviso(null)
+  }
   const [aviso, setAviso] = useState(null)
   const [error, setError] = useState(null)
   const archivoRef = useRef(null)
@@ -30,6 +36,7 @@ export default function Ajustes() {
       comisionPct: Math.min(100, Math.max(0, Number(datos.comisionPct) || 0)),
       fidelidadCada: Math.max(0, Math.round(Number(datos.fidelidadCada) || 0)),
       diasRecordatorio: Math.max(1, Math.round(Number(datos.diasRecordatorio) || 21)),
+      horario,
     })
     setAviso('Guardado.')
   }
@@ -68,6 +75,29 @@ export default function Ajustes() {
           <Etiqueta texto="Nombre de la barbería">
             <input {...campo('nombre')} className={CLASE_INPUT} />
           </Etiqueta>
+        </Bloque>
+
+        <Bloque titulo="🕘 Horario de atención">
+          <p className="text-xs text-tinta-suave">Sale en la página de clientes ("Abierto · cierra 9:00 p. m.") y solo se pueden reservar citas en estas horas.</p>
+          <ul className="space-y-2">
+            {[1, 2, 3, 4, 5, 6, 0].map((d) => (
+              <li key={d} className="flex items-center gap-2">
+                <label className="flex w-28 shrink-0 items-center gap-2 text-sm">
+                  <input type="checkbox" checked={horario[d].abierto} onChange={(e) => cambiarDia(d, { abierto: e.target.checked })} className="h-4 w-4" />
+                  <span className={horario[d].abierto ? 'font-bold' : 'text-tinta-suave'}>{NOMBRES_DIAS[d]}</span>
+                </label>
+                {horario[d].abierto ? (
+                  <div className="flex min-w-0 flex-1 items-center gap-1">
+                    <input type="time" value={horario[d].desde} onChange={(e) => cambiarDia(d, { desde: e.target.value })} aria-label={`${NOMBRES_DIAS[d]} desde`} className="min-w-0 flex-1 rounded-lg border border-linea bg-fondo px-2 py-1.5 text-sm text-tinta" />
+                    <span className="text-tinta-suave">a</span>
+                    <input type="time" value={horario[d].hasta} onChange={(e) => cambiarDia(d, { hasta: e.target.value })} aria-label={`${NOMBRES_DIAS[d]} hasta`} className="min-w-0 flex-1 rounded-lg border border-linea bg-fondo px-2 py-1.5 text-sm text-tinta" />
+                  </div>
+                ) : (
+                  <span className="text-sm text-tinta-suave">Cerrado</span>
+                )}
+              </li>
+            ))}
+          </ul>
         </Bloque>
 
         <Bloque titulo="💈 Comisión de los barberos">
