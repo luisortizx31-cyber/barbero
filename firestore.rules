@@ -20,7 +20,7 @@ service cloud.firestore {
     }
 
     function esPlataforma() {
-      return estaAutenticado() && request.auth.uid == 'PENDIENTE';
+      return estaAutenticado() && request.auth.uid == 'hReh0hAPwCOBqVi9mC81Okx8FiR2';
     }
 
     function esDuenoDe(barberiaId) {

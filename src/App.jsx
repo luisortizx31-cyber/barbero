@@ -59,7 +59,7 @@ function SoloPantalla({ soloVer }) {
   }
   return (
     <main className={`mx-auto p-4 ${completa ? 'max-w-none sm:p-8' : 'max-w-6xl'}`}>
-      <Pantalla pantallaCompleta={completa || soloVer} soloVer={soloVer} conCitas={false} onPantallaCompleta={alternar} />
+      <Pantalla pantallaCompleta={completa || soloVer} enCompleta={completa} soloVer={soloVer} conCitas={false} onPantallaCompleta={alternar} />
     </main>
   )
 }

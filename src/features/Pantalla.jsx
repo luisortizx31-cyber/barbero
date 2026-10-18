@@ -28,7 +28,9 @@ function hora12(hhmm) {
 
 // `soloVer`: el televisor (sin botones). `conCitas`: los barberos y el
 // televisor entran sin cuenta y no ven las citas (tienen celulares).
-export default function Pantalla({ pantallaCompleta, onPantallaCompleta, soloVer = false, conCitas = true }) {
+// `enCompleta`: si de verdad está en pantalla completa (el televisor se
+// ve en grande aunque no lo esté).
+export default function Pantalla({ pantallaCompleta, onPantallaCompleta, soloVer = false, conCitas = true, enCompleta = pantallaCompleta }) {
   const estado = useEstado()
   const { config, sillas, servicios, clientes, espera, historial, productos } = estado
   const ahora = useAhora(1000)
@@ -204,7 +206,7 @@ export default function Pantalla({ pantallaCompleta, onPantallaCompleta, soloVer
 
       <div className="mt-5 flex justify-center">
         <button type="button" onClick={onPantallaCompleta} className="rounded-xl border border-linea bg-panel px-4 py-2.5 text-sm font-semibold text-tinta-suave">
-          {pantallaCompleta ? '✕ Salir de pantalla completa' : '⛶ Pantalla completa (para el televisor)'}
+          {enCompleta ? '✕ Salir de pantalla completa' : '⛶ Pantalla completa (para el televisor)'}
         </button>
       </div>
 

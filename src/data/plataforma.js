@@ -13,7 +13,7 @@ import { db, firebaseConfig } from './firebase'
 // La cuenta de Luis es UNA sola, fija por su uid (también en
 // firestore.rules), igual que la empresa en control-de-autos: así nadie
 // que se cree una cuenta por su lado pasa por plataforma.
-export const SUPER_UID = 'PENDIENTE'
+export const SUPER_UID = 'hReh0hAPwCOBqVi9mC81Okx8FiR2'
 
 export function generarSlug(nombre) {
   return (nombre || '')
