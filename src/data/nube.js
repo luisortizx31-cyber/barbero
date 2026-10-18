@@ -1,11 +1,12 @@
 import { doc, collection, onSnapshot, writeBatch } from 'firebase/firestore'
 import { db } from './firebase'
 
-// Cómo se guarda la barbería en Firestore (una por cuenta):
+// Cómo se guarda cada barbería en Firestore (multitenant, igual que las
+// líneas de control-de-autos; {id} es el slug de la barbería):
 //
-//   barberias/{uid}                 config, servicios, sillas, espera
-//   barberias/{uid}/historial/{id}  cada atención
-//   barberias/{uid}/clientes/{id}   ... y lo mismo para citas, productos,
+//   barberias/{id}                  nombre, config, servicios, sillas, espera
+//   barberias/{id}/historial/{id}   cada atención
+//   barberias/{id}/clientes/{id}    ... y lo mismo para citas, productos,
 //                                   ventas, gastos y cierres (id = día)
 //
 // Lo que cambia a cada rato y tiene que verse al instante en todas las
@@ -30,12 +31,14 @@ const ORDEN = {
   productos: (a, b) => (a.nombre || '').localeCompare(b.nombre || ''),
 }
 
-// Escucha la barbería de `uid`. `alCambiar(parcial)` recibe las partes
-// que llegaron; `alListo(existe)` se llama una vez, cuando ya llegó todo
-// (existe = false si la cuenta todavía no tiene barbería).
-export function escucharBarberia(uid, alCambiar, alListo, alError) {
-  const raiz = doc(db, 'barberias', uid)
-  const pendientes = new Set(['principal', ...COLECCIONES_NUBE])
+// Escucha la barbería `id`. `alCambiar(parcial)` recibe las partes que
+// llegaron; `alListo(existe)` se llama una vez, cuando ya llegó todo
+// (existe = false si la barbería todavía no tiene sus datos).
+// `colecciones`: cuáles escuchar - el enlace de los barberos y el del
+// televisor (sin cuenta) solo ven el documento principal.
+export function escucharBarberia(id, alCambiar, alListo, alError, colecciones = COLECCIONES_NUBE) {
+  const raiz = doc(db, 'barberias', id)
+  const pendientes = new Set(['principal', ...colecciones])
   let existe = null
   const avisarSiListo = (parte) => {
     if (!pendientes.has(parte)) return
@@ -50,13 +53,13 @@ export function escucharBarberia(uid, alCambiar, alListo, alError) {
         existe = snap.exists()
         if (existe) {
           const d = snap.data()
-          alCambiar(Object.fromEntries(CAMPOS_PRINCIPALES.filter((c) => d[c] !== undefined).map((c) => [c, d[c]])))
+          alCambiar({ nombreBarberia: d.nombre, ...Object.fromEntries(CAMPOS_PRINCIPALES.filter((c) => d[c] !== undefined).map((c) => [c, d[c]])) })
         }
         avisarSiListo('principal')
       },
       alError
     ),
-    ...COLECCIONES_NUBE.map((c) =>
+    ...colecciones.map((c) =>
       onSnapshot(
         collection(raiz, c),
         (snap) => {
@@ -76,8 +79,8 @@ export function escucharBarberia(uid, alCambiar, alListo, alError) {
 // la forma de `estado`). Se compara por referencia: store.js nunca
 // modifica un objeto, siempre crea uno nuevo, así que lo que no cambió
 // es el mismo objeto.
-export async function guardarCambios(uid, antes, despues) {
-  const raiz = doc(db, 'barberias', uid)
+export async function guardarCambios(id, antes, despues) {
+  const raiz = doc(db, 'barberias', id)
   const operaciones = []
 
   const principal = {}
@@ -95,6 +98,8 @@ export async function guardarCambios(uid, antes, despues) {
       idsNuevos.add(id)
       if (porIdViejo.get(id) !== x) operaciones.push((b) => b.set(doc(raiz, c, id), x))
     }
+    // Sin cuenta (barberos) no se escuchan las colecciones: `antes` las
+    // tiene vacías, así que ahí solo se agregan cosas, nunca se borra.
     for (const id of porIdViejo.keys()) if (!idsNuevos.has(id)) operaciones.push((b) => b.delete(doc(raiz, c, id)))
   }
 

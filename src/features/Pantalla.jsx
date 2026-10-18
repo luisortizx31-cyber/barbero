@@ -26,7 +26,9 @@ function hora12(hhmm) {
   return formatearHora(new Date(msDeHora(hhmm)).toISOString())
 }
 
-export default function Pantalla({ pantallaCompleta, onPantallaCompleta }) {
+// `soloVer`: el televisor (sin botones). `conCitas`: los barberos y el
+// televisor entran sin cuenta y no ven las citas (tienen celulares).
+export default function Pantalla({ pantallaCompleta, onPantallaCompleta, soloVer = false, conCitas = true }) {
   const estado = useEstado()
   const { config, sillas, servicios, clientes, espera, historial, productos } = estado
   const ahora = useAhora(1000)
@@ -90,6 +92,7 @@ export default function Pantalla({ pantallaCompleta, onPantallaCompleta }) {
       {libres.length > 0 && espera.length > 0 && (
         <button
           type="button"
+          disabled={soloVer}
           onClick={() => setHoja({ tipo: 'ocupar', sillaId: libres[0].id })}
           className="mb-4 flex w-full items-center justify-between gap-3 rounded-2xl bg-laton px-4 py-3 text-left text-fondo"
         >
@@ -99,7 +102,7 @@ export default function Pantalla({ pantallaCompleta, onPantallaCompleta }) {
               {espera[0].nombre} → {libres[0].nombre}
             </span>
           </span>
-          <span className="shrink-0 text-sm font-bold">Sentar ›</span>
+          {!soloVer && <span className="shrink-0 text-sm font-bold">Sentar ›</span>}
         </button>
       )}
 
@@ -115,6 +118,7 @@ export default function Pantalla({ pantallaCompleta, onPantallaCompleta }) {
               grande={pantallaCompleta}
               servicios={servicios}
               cita={citaDeSilla(s.id)}
+              soloVer={soloVer}
               onOcupar={() => setHoja({ tipo: 'ocupar', sillaId: s.id })}
               onLiberar={() => setHoja({ tipo: 'cobrar', sillaId: s.id })}
             />
@@ -123,13 +127,15 @@ export default function Pantalla({ pantallaCompleta, onPantallaCompleta }) {
       )}
 
       {/* Cola de espera y citas de hoy */}
-      <div className="mt-5 grid gap-4 md:grid-cols-2">
+      <div className={`mt-5 grid gap-4 ${conCitas ? 'md:grid-cols-2' : ''}`}>
         <div className="overflow-hidden rounded-3xl border border-linea bg-panel">
           <div className="flex items-center justify-between gap-2 border-b border-linea px-4 py-3">
             <p className={`font-extrabold ${pantallaCompleta ? 'text-2xl' : 'text-base'}`}>⏳ En espera ({espera.length})</p>
-            <button type="button" onClick={() => setHoja({ tipo: 'espera' })} className="rounded-xl bg-laton px-3 py-2 text-sm font-bold text-fondo">
-              + Anotar
-            </button>
+            {!soloVer && (
+              <button type="button" onClick={() => setHoja({ tipo: 'espera' })} className="rounded-xl bg-laton px-3 py-2 text-sm font-bold text-fondo">
+                + Anotar
+              </button>
+            )}
           </div>
           {espera.length === 0 ? (
             <p className="px-4 py-5 text-center text-sm text-tinta-suave">Nadie esperando.</p>
@@ -149,7 +155,7 @@ export default function Pantalla({ pantallaCompleta, onPantallaCompleta }) {
                   </div>
                   <div className="shrink-0 text-right">
                     <p className={`cifra font-extrabold text-laton ${pantallaCompleta ? 'text-2xl' : ''}`}>{esperas[i] < 60000 ? 'Ya' : `~${formatearDuracion(esperas[i])}`}</p>
-                    {!pantallaCompleta && (
+                    {!pantallaCompleta && !soloVer && (
                       <div className="mt-1 flex justify-end gap-1 text-xs">
                         <button type="button" onClick={() => moverEnEspera(x.id, -1)} disabled={i === 0} className="rounded border border-linea px-1.5 disabled:opacity-30" aria-label="Subir">
                           ↑
@@ -171,6 +177,7 @@ export default function Pantalla({ pantallaCompleta, onPantallaCompleta }) {
           )}
         </div>
 
+        {conCitas && (
         <div className="overflow-hidden rounded-3xl border border-linea bg-panel">
           <p className={`border-b border-linea px-4 py-3 font-extrabold ${pantallaCompleta ? 'text-2xl' : 'text-base'}`}>📅 Citas de hoy ({citasHoy.length})</p>
           {citasHoy.length === 0 ? (
@@ -192,6 +199,7 @@ export default function Pantalla({ pantallaCompleta, onPantallaCompleta }) {
             </ul>
           )}
         </div>
+        )}
       </div>
 
       <div className="mt-5 flex justify-center">
@@ -323,7 +331,7 @@ function AnotarEspera({ clientes, servicios, onAnotar }) {
   )
 }
 
-function TarjetaSilla({ silla, ahora, grande, servicios, cita, onOcupar, onLiberar }) {
+function TarjetaSilla({ silla, ahora, grande, servicios, cita, soloVer, onOcupar, onLiberar }) {
   const ocupada = Boolean(silla.ocupadaDesde)
   const cortes = servicios.filter((x) => (silla.servicioIds || []).includes(x.id))
 
@@ -371,6 +379,7 @@ function TarjetaSilla({ silla, ahora, grande, servicios, cita, onOcupar, onLiber
         </div>
       </div>
 
+      {!soloVer && (
       <div className="p-3 pt-0">
         {ocupada ? (
           <button
@@ -386,6 +395,7 @@ function TarjetaSilla({ silla, ahora, grande, servicios, cita, onOcupar, onLiber
           </button>
         )}
       </div>
+      )}
     </div>
   )
 }

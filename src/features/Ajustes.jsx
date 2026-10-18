@@ -1,6 +1,7 @@
 import { useRef, useState } from 'react'
 import { useEstado, useSesion, guardarConfig, exportarCopia, importarCopia, pesoGuardado, salir } from '../data/store'
 import { claveDia } from '../domain/hora'
+import { enlaces } from '../data/plataforma'
 
 // Ajustes del local: nombre, comisión de los barberos, tarjeta de
 // fidelidad, cuándo recordar a los clientes, y la copia de seguridad
@@ -8,7 +9,8 @@ import { claveDia } from '../domain/hora'
 // recupera).
 export default function Ajustes() {
   const { config, clientes, historial } = useEstado()
-  const { usuario } = useSesion()
+  const { usuario, barberiaId } = useSesion()
+  const e = enlaces(barberiaId)
   const [datos, setDatos] = useState({ ...config })
   const [aviso, setAviso] = useState(null)
   const [error, setError] = useState(null)
@@ -108,9 +110,10 @@ export default function Ajustes() {
         <p className="text-sm">
           Cuenta: <span className="font-bold">{usuario?.email}</span>
         </p>
-        <p className="text-sm text-tinta-suave">
-          Para usarla en el celular de cada barbero o en el televisor del local, abre <span className="font-bold text-tinta">luisortizx31-cyber.github.io/barbero</span> y entra con este mismo correo y contraseña. Todos ven las mismas sillas al instante.
-        </p>
+        <p className="text-sm text-tinta-suave">Mándales estos enlaces. No necesitan contraseña y todos ven las mismas sillas al instante.</p>
+        <Enlace titulo="✂ Para tus barberos (ocupan y cobran sillas)" url={e.barbero} />
+        <Enlace titulo="📺 Para el televisor del local (solo ver)" url={e.pantalla} />
+        <p className="text-xs text-tinta-suave">Los barberos no ven la caja, los clientes ni las citas: eso es solo para ti, con tu correo.</p>
         <button
           type="button"
           onClick={() => confirm('¿Salir de la cuenta en este equipo? Los datos quedan guardados en la nube.') && salir()}
@@ -156,5 +159,35 @@ function Etiqueta({ texto, children }) {
       <span className="mb-1 block text-xs font-bold uppercase tracking-wide text-tinta-suave">{texto}</span>
       {children}
     </label>
+  )
+}
+
+function Enlace({ titulo, url }) {
+  const [copiado, setCopiado] = useState(false)
+  const compartir = `https://wa.me/?text=${encodeURIComponent(url)}`
+  return (
+    <div className="rounded-xl border border-linea bg-fondo p-3">
+      <p className="text-xs font-bold text-tinta-suave">{titulo}</p>
+      <a href={url} target="_blank" rel="noopener noreferrer" className="block truncate text-sm text-laton underline decoration-dotted">
+        {url.replace(/^https?:\/\//, '')}
+      </a>
+      <div className="mt-2 flex gap-2">
+        <button
+          type="button"
+          onClick={() =>
+            navigator.clipboard?.writeText(url).then(() => {
+              setCopiado(true)
+              setTimeout(() => setCopiado(false), 1500)
+            })
+          }
+          className="rounded-lg border border-linea px-3 py-1.5 text-xs font-bold"
+        >
+          {copiado ? '✓ Copiado' : 'Copiar'}
+        </button>
+        <a href={compartir} target="_blank" rel="noopener noreferrer" className="rounded-lg bg-libre px-3 py-1.5 text-xs font-bold text-white">
+          💬 WhatsApp
+        </a>
+      </div>
+    </div>
   )
 }

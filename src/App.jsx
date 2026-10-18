@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
-import { useEstado, useSesion } from './data/store'
+import { useEstado, useSesion, salir } from './data/store'
 import Entrar from './features/Entrar'
+import Plataforma from './features/Plataforma'
 import Pantalla from './features/Pantalla'
 import Citas from './features/Citas'
 import Clientes from './features/Clientes'
@@ -24,25 +25,57 @@ const PESTANAS = [
 const PANTALLAS = { citas: Citas, clientes: Clientes, caja: Caja, resumen: Resumen, cortes: Cortes, productos: Productos, sillas: Sillas, ajustes: Ajustes }
 const CLAVE_PESTANA = 'barberia:pestana'
 
-// Sin sesión: pantalla para entrar. Con sesión, mientras llega la
-// barbería de la nube: "Cargando…".
+// Quién entra (ver leerRuta en store.js):
+//   televisor (#/pantalla/{id})  -> solo las sillas, sin botones
+//   barberos  (#/barbero/{id})   -> las sillas: ocupar y cobrar
+//   Luis (plataforma)            -> las barberías
+//   dueño                        -> su barbería completa
 export default function App() {
   const sesion = useSesion()
   const estado = useEstado()
-  if (sesion.cargando && !sesion.usuario) return <Cargando texto="Abriendo…" />
-  if (!sesion.usuario) return <Entrar />
-  if (sesion.error) return <Cargando texto={`No se pudo abrir la barbería: ${sesion.error}`} />
+  if (sesion.error) return <Cargando texto={sesion.error} accion={sesion.modo === 'panel' && Boolean(sesion.usuario)} />
+  if (sesion.modo === 'panel') {
+    if (sesion.cargando && !sesion.usuario) return <Cargando texto="Abriendo…" />
+    if (!sesion.usuario) return <Entrar />
+    if (sesion.rol === 'super') return <Plataforma />
+  }
   if (!estado) return <Cargando texto="Cargando la barbería…" />
+  if (sesion.modo === 'pantalla') return <SoloPantalla soloVer />
+  if (sesion.modo === 'barbero') return <SoloPantalla />
   return <AppBarberia />
 }
 
-function Cargando({ texto }) {
+// Televisor y barberos: solo la pantalla de sillas, sin pestañas.
+function SoloPantalla({ soloVer }) {
+  const [completa, setCompleta] = useState(false)
+  async function alternar() {
+    if (completa) {
+      setCompleta(false)
+      if (document.fullscreenElement) await document.exitFullscreen().catch(() => {})
+      return
+    }
+    setCompleta(true)
+    await document.documentElement.requestFullscreen?.().catch(() => {})
+  }
+  return (
+    <main className={`mx-auto p-4 ${completa ? 'max-w-none sm:p-8' : 'max-w-6xl'}`}>
+      <Pantalla pantallaCompleta={completa || soloVer} soloVer={soloVer} conCitas={false} onPantallaCompleta={alternar} />
+    </main>
+  )
+}
+
+function Cargando({ texto, accion }) {
   return (
     <div className="flex min-h-svh flex-col items-center justify-center gap-3 p-6 text-center">
       <p className="text-5xl" aria-hidden="true">
         💈
       </p>
       <p className="text-tinta-suave">{texto}</p>
+      {accion && (
+        <button type="button" onClick={() => salir()} className="rounded-xl border border-linea px-4 py-2 text-sm text-tinta-suave">
+          Salir de la cuenta
+        </button>
+      )}
     </div>
   )
 }

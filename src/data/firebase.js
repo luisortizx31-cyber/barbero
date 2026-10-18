@@ -7,7 +7,7 @@ import { initializeFirestore, persistentLocalCache, persistentMultipleTabManager
 // Esta configuración es pública por diseño (va en el código de toda app
 // web de Firebase); lo que protege los datos son las reglas de
 // firestore.rules: cada barbería solo lee y escribe lo suyo.
-const firebaseConfig = {
+export const firebaseConfig = {
   apiKey: 'AIzaSyC5QRCmEfkdq0ZOP72k1gQRrntYwWESlfQ',
   authDomain: 'barberia-8b2aa.firebaseapp.com',
   projectId: 'barberia-8b2aa',

@@ -1,11 +1,10 @@
 import { useState } from 'react'
-import { entrar, crearCuenta, recuperarClave } from '../data/store'
+import { entrar, recuperarClave } from '../data/store'
 
-// Entrar con la cuenta de la barbería. La misma cuenta se usa en todos
-// los equipos del local (el celular del dueño, el de cada barbero y el
-// televisor), así todos ven las mismas sillas.
+// Entrar con la cuenta: el dueño de una barbería (la cuenta se la da
+// la plataforma, no hay "crear cuenta") o Luis (la plataforma). Los
+// barberos y el televisor no pasan por acá: entran con su enlace.
 export default function Entrar() {
-  const [modo, setModo] = useState('entrar') // 'entrar' | 'crear'
   const [correo, setCorreo] = useState('')
   const [clave, setClave] = useState('')
   const [ocupado, setOcupado] = useState(false)
@@ -18,8 +17,7 @@ export default function Entrar() {
     setError(null)
     setAviso(null)
     try {
-      if (modo === 'crear') await crearCuenta(correo, clave)
-      else await entrar(correo, clave)
+      await entrar(correo, clave)
     } catch (err) {
       setError(err.message)
     } finally {
@@ -45,7 +43,7 @@ export default function Entrar() {
       </p>
       <h1 className="mt-2 text-center text-2xl font-extrabold">Barbería</h1>
       <p className="mb-6 text-center text-sm text-tinta-suave">
-        {modo === 'crear' ? 'Crea la cuenta de tu barbería.' : 'Entra con la cuenta de tu barbería.'} Usa la misma en todos los celulares y en el televisor del local.
+        Entra con la cuenta de tu barbería.
       </p>
 
       <form onSubmit={enviar} className="space-y-3">
@@ -60,10 +58,10 @@ export default function Entrar() {
         />
         <input
           type="password"
-          autoComplete={modo === 'crear' ? 'new-password' : 'current-password'}
+          autoComplete="current-password"
           value={clave}
           onChange={(e) => setClave(e.target.value)}
-          placeholder={modo === 'crear' ? 'Contraseña (mínimo 6)' : 'Contraseña'}
+          placeholder="Contraseña"
           required
           minLength={6}
           className="w-full rounded-xl border border-linea bg-panel px-4 py-3 text-tinta outline-none focus-visible:border-laton"
@@ -71,26 +69,14 @@ export default function Entrar() {
         {error && <p className="rounded-xl bg-ocupada-suave px-3 py-2 text-sm text-ocupada">{error}</p>}
         {aviso && <p className="rounded-xl bg-libre-suave px-3 py-2 text-sm text-libre">{aviso}</p>}
         <button type="submit" disabled={ocupado} className="w-full rounded-xl bg-laton py-3.5 text-base font-extrabold text-fondo disabled:opacity-50">
-          {ocupado ? 'Un momento…' : modo === 'crear' ? 'Crear cuenta' : 'Entrar'}
+          {ocupado ? 'Un momento…' : 'Entrar'}
         </button>
       </form>
 
       <div className="mt-5 space-y-3 text-center text-sm">
-        <button
-          type="button"
-          onClick={() => {
-            setModo(modo === 'crear' ? 'entrar' : 'crear')
-            setError(null)
-          }}
-          className="font-bold text-laton underline decoration-dotted"
-        >
-          {modo === 'crear' ? 'Ya tengo cuenta: entrar' : 'Es mi primera vez: crear cuenta'}
+        <button type="button" onClick={olvide} className="block w-full text-tinta-suave underline decoration-dotted">
+          Olvidé mi contraseña
         </button>
-        {modo === 'entrar' && (
-          <button type="button" onClick={olvide} className="block w-full text-tinta-suave underline decoration-dotted">
-            Olvidé mi contraseña
-          </button>
-        )}
       </div>
     </div>
   )

@@ -1,7 +1,8 @@
 import { useSyncExternalStore } from 'react'
-import { onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword, sendPasswordResetEmail, signOut } from 'firebase/auth'
+import { onAuthStateChanged, signInWithEmailAndPassword, sendPasswordResetEmail, signOut } from 'firebase/auth'
 import { auth } from './firebase'
 import { escucharBarberia, guardarCambios } from './nube'
+import { SUPER_UID, obtenerPerfil } from './plataforma'
 
 // Todo lo de la barbería: el estado y las acciones que lo cambian.
 // Al principio vivía solo en este equipo (localStorage); desde el
@@ -76,19 +77,22 @@ function serviciosIniciales() {
 const COLECCIONES = ['historial', 'clientes', 'espera', 'citas', 'productos', 'ventas', 'gastos', 'cierres']
 
 // Completa lo que le falte a un estado guardado por una versión anterior.
+// Lo que ya está completo se deja tal cual (mismo objeto): así al guardar
+// no se reescribe en la nube lo que no cambió.
 function completar(e) {
-  const completo = { ...e, config: { ...CONFIG_INICIAL, ...e.config }, servicios: e.servicios ?? serviciosIniciales() }
-  for (const c of COLECCIONES) completo[c] = e[c] ?? []
+  const config = e.config && Object.keys(CONFIG_INICIAL).every((k) => k in e.config) ? e.config : { ...CONFIG_INICIAL, ...e.config }
+  const completo = { ...e, config, servicios: e.servicios ?? serviciosIniciales() }
+  for (const c of COLECCIONES) if (!completo[c]) completo[c] = []
   return completo
 }
 
-function inicial() {
-  return completar({ config: { ...CONFIG_INICIAL }, servicios: serviciosIniciales(), sillas: [1, 2, 3].map(sillaNueva) })
+function inicial(nombre) {
+  return completar({ config: { ...CONFIG_INICIAL, nombre: nombre || CONFIG_INICIAL.nombre }, servicios: serviciosIniciales(), sillas: [1, 2, 3].map(sillaNueva) })
 }
 
 // Lo que había guardado en ESTE equipo antes de la nube (la versión
-// sin cuenta): se sube solo la primera vez que se entra con una cuenta
-// nueva, para no perder nada.
+// sin cuenta): se sube solo la primera vez que el dueño abre su
+// barbería, para no perder nada.
 function leerLocal() {
   try {
     const guardado = JSON.parse(localStorage.getItem(CLAVE))
@@ -100,14 +104,27 @@ function leerLocal() {
 }
 
 // --- Sesión y nube --------------------------------------------------------
-// Desde el 2026-10-18 todo vive en Firebase (proyecto "barberia"): se
-// entra con el correo de la barbería en cada celular y en el televisor,
-// y todos ven lo mismo al instante. `estado` es null mientras no hay
-// sesión o todavía no llegó la barbería.
+// Desde el 2026-10-18 todo vive en Firebase (proyecto "barberia"), con
+// varias barberías (multitenant, copiado de las líneas de
+// control-de-autos). El enlace (lo que va después del #) dice cómo se
+// entra:
+//   #/                con cuenta: Luis (la plataforma, crea las
+//                     barberías) o el dueño de una barbería (su panel)
+//   #/barbero/{id}    sin cuenta: los barberos ocupan y cobran sillas
+//   #/pantalla/{id}   sin cuenta: el televisor del local, solo para ver
+// `estado` es null mientras no llegó la barbería.
 
+export function leerRuta() {
+  const partes = (typeof location !== 'undefined' ? location.hash : '').replace(/^#\/?/, '').split('/').filter(Boolean)
+  if ((partes[0] === 'barbero' || partes[0] === 'pantalla') && partes[1]) return { modo: partes[0], id: decodeURIComponent(partes[1]) }
+  return { modo: 'panel', id: null }
+}
+
+const RUTA = leerRuta()
 let estado = null
-let sesion = { cargando: true, usuario: null, listo: false, error: null, migrado: false }
-let uid = null
+// rol: 'super' (Luis) | 'dueno' | 'barbero' | 'pantalla'
+let sesion = { modo: RUTA.modo, cargando: true, usuario: null, rol: null, barberiaId: RUTA.id, listo: false, error: null, migrado: false }
+let barberiaId = null
 let dejarDeEscuchar = null
 const oyentes = new Set()
 const avisar = () => oyentes.forEach((fn) => fn())
@@ -116,25 +133,23 @@ function fijar(nuevo) {
   const antes = estado
   estado = nuevo
   avisar()
-  if (!uid) return
-  guardarCambios(uid, antes, nuevo).catch((err) => {
+  if (!barberiaId) return
+  guardarCambios(barberiaId, antes, nuevo).catch((err) => {
     console.error('[store] guardar en la nube', err)
     alert(`No se pudo guardar: ${err.message}`)
   })
 }
 
-onAuthStateChanged(auth, (usuario) => {
-  dejarDeEscuchar?.()
-  dejarDeEscuchar = null
-  estado = null
-  uid = usuario?.uid ?? null
-  sesion = { cargando: Boolean(usuario), usuario, listo: false, error: null, migrado: false }
-  avisar()
-  if (!usuario) return
-
+// Se conecta a una barbería. `completa`: el dueño ve todo (clientes,
+// caja...); los barberos y el televisor, solo las sillas y la espera.
+// `inicializar`: si la barbería todavía no tiene sus datos (recién
+// creada por la plataforma), el dueño la arranca con 3 sillas y los
+// cortes de ejemplo, o con lo que tenía en este equipo.
+function conectar(id, { completa, inicializar }) {
+  barberiaId = id
   let armado = {}
   dejarDeEscuchar = escucharBarberia(
-    usuario.uid,
+    id,
     (parcial) => {
       if (!sesion.listo) {
         armado = { ...armado, ...parcial }
@@ -144,25 +159,58 @@ onAuthStateChanged(auth, (usuario) => {
       avisar()
     },
     (existe) => {
-      sesion = { ...sesion, cargando: false, listo: true }
-      if (existe) {
+      if (existe && armado.sillas) {
+        sesion = { ...sesion, cargando: false, listo: true }
         estado = completar(armado)
         avisar()
-        return
+      } else if (inicializar) {
+        const local = leerLocal()
+        sesion = { ...sesion, cargando: false, listo: true, migrado: Boolean(local) }
+        const nombre = armado.nombreBarberia
+        fijar(local ? { ...local, config: { ...local.config, nombre: nombre || local.config.nombre } } : inicial(nombre))
+      } else {
+        sesion = { ...sesion, cargando: false, error: 'Esta barbería no existe, o su dueño todavía no la abrió.' }
+        avisar()
       }
-      // Cuenta nueva: se sube lo que había en este equipo, o se empieza
-      // con 3 sillas y los cortes de ejemplo.
-      const local = leerLocal()
-      sesion = { ...sesion, migrado: Boolean(local) }
-      fijar(local ?? inicial())
     },
     (err) => {
       console.error('[store] escuchar', err)
+      sesion = { ...sesion, cargando: false, error: err.code === 'permission-denied' ? 'No tienes permiso para ver esta barbería.' : err.message }
+      avisar()
+    },
+    completa ? undefined : []
+  )
+}
+
+if (RUTA.modo !== 'panel') {
+  // Barberos y televisor: sin cuenta, directo a la barbería del enlace.
+  sesion = { ...sesion, rol: RUTA.modo }
+  conectar(RUTA.id, { completa: false, inicializar: false })
+} else {
+  onAuthStateChanged(auth, async (usuario) => {
+    dejarDeEscuchar?.()
+    dejarDeEscuchar = null
+    estado = null
+    barberiaId = null
+    sesion = { ...sesion, cargando: Boolean(usuario), usuario, rol: null, barberiaId: null, listo: false, error: null, migrado: false }
+    avisar()
+    if (!usuario) return
+    if (usuario.uid === SUPER_UID) {
+      sesion = { ...sesion, cargando: false, rol: 'super', listo: true }
+      avisar()
+      return
+    }
+    try {
+      const perfil = await obtenerPerfil(usuario.uid)
+      if (perfil?.role !== 'barberia' || !perfil.barberiaId) throw new Error('Esta cuenta no tiene una barbería. Pídele a quien te dio el acceso que la revise.')
+      sesion = { ...sesion, rol: 'dueno', barberiaId: perfil.barberiaId }
+      conectar(perfil.barberiaId, { completa: true, inicializar: true })
+    } catch (err) {
       sesion = { ...sesion, cargando: false, error: err.message }
       avisar()
     }
-  )
-})
+  })
+}
 
 function suscribir(fn) {
   oyentes.add(fn)
@@ -195,14 +243,6 @@ function traducir(err) {
 export async function entrar(correo, clave) {
   try {
     await signInWithEmailAndPassword(auth, correo.trim(), clave)
-  } catch (err) {
-    throw traducir(err)
-  }
-}
-
-export async function crearCuenta(correo, clave) {
-  try {
-    await createUserWithEmailAndPassword(auth, correo.trim(), clave)
   } catch (err) {
     throw traducir(err)
   }
