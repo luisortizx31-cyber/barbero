@@ -2,11 +2,13 @@ import { useEffect, useState } from 'react'
 import Pantalla from './features/Pantalla'
 import Sillas from './features/Sillas'
 import Historial from './features/Historial'
+import Cortes from './features/Cortes'
 
 const PESTANAS = [
   { id: 'pantalla', texto: '💈 Pantalla', Componente: Pantalla },
+  { id: 'historial', texto: '💰 Caja', Componente: Historial },
+  { id: 'cortes', texto: '✂ Cortes', Componente: Cortes },
   { id: 'sillas', texto: '🪑 Sillas', Componente: Sillas },
-  { id: 'historial', texto: '🕒 Historial', Componente: Historial },
 ]
 const CLAVE_PESTANA = 'barberia:pestana'
 
@@ -62,7 +64,7 @@ export default function App() {
                 type="button"
                 onClick={() => elegir(p.id)}
                 aria-current={pestana === p.id ? 'page' : undefined}
-                className={`flex-1 rounded-xl py-2.5 text-sm font-bold ${pestana === p.id ? 'bg-laton text-fondo' : 'text-tinta-suave'}`}
+                className={`flex-1 rounded-xl px-1 py-2.5 text-xs font-bold sm:text-sm ${pestana === p.id ? 'bg-laton text-fondo' : 'text-tinta-suave'}`}
               >
                 {p.texto}
               </button>

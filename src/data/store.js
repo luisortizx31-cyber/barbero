@@ -9,11 +9,15 @@ import { useSyncExternalStore } from 'react'
 //
 // estado = {
 //   config:    { nombre }
-//   sillas:    [{ id, nombre, barbero, color, estilo, foto, ocupadaDesde, liberadaEn, cliente }]
+//   servicios: [{ id, nombre, precio }]  los cortes y sus precios
+//   sillas:    [{ id, nombre, barbero, color, foto, ocupadaDesde, liberadaEn, cliente, servicioIds }]
 //              foto: imagen (data URL) de la silla real del local, o null
 //              ocupadaDesde: ISO si está ocupada, null si está libre
 //              liberadaEn: ISO de la última vez que se liberó
-//   historial: [{ id, sillaId, inicio, fin, cliente }]  cada atención terminada
+//              servicioIds: los cortes elegidos al ocuparla (se pueden cambiar al cobrar)
+//   historial: [{ id, sillaId, barbero, inicio, fin, cliente, cobro }]  cada atención terminada
+//              cobro: null (se liberó sin cobrar) | { servicios: [{ nombre, precio }], monto, metodo }
+//              metodo: 'efectivo' | 'yape' | 'plin'
 // }
 
 const CLAVE = 'barberia:v1'
@@ -25,17 +29,31 @@ function nuevoId() {
 }
 
 function sillaNueva(n) {
-  return { id: nuevoId(), nombre: `Silla ${n}`, barbero: '', color: COLORES[(n - 1) % 3], foto: null, ocupadaDesde: null, liberadaEn: null, cliente: '' }
+  return { id: nuevoId(), nombre: `Silla ${n}`, barbero: '', color: COLORES[(n - 1) % 3], foto: null, ocupadaDesde: null, liberadaEn: null, cliente: '', servicioIds: [] }
+}
+
+// Cortes de partida (pedido del usuario, 2026-10-17: "elegir un
+// corte" y cobrar la silla); se cambian en la pestaña Cortes.
+const SERVICIOS_INICIALES = [
+  ['Corte clásico', 15],
+  ['Degradado (fade)', 20],
+  ['Corte + barba', 25],
+  ['Barba', 10],
+  ['Corte de niño', 12],
+]
+
+function serviciosIniciales() {
+  return SERVICIOS_INICIALES.map(([nombre, precio]) => ({ id: nuevoId(), nombre, precio }))
 }
 
 function inicial() {
-  return { config: { nombre: 'Mi Barbería' }, sillas: [1, 2, 3].map(sillaNueva), historial: [] }
+  return { config: { nombre: 'Mi Barbería' }, servicios: serviciosIniciales(), sillas: [1, 2, 3].map(sillaNueva), historial: [] }
 }
 
 function leer() {
   try {
     const guardado = JSON.parse(localStorage.getItem(CLAVE))
-    if (guardado?.sillas) return guardado
+    if (guardado?.sillas) return { servicios: serviciosIniciales(), ...guardado }
   } catch (err) {
     console.error('[store] leer', err)
   }
@@ -82,19 +100,45 @@ function cambiarSilla(id, cambios) {
 
 // --- Ocupar y liberar ------------------------------------------------------
 
-export function ocuparSilla(id, cliente = '') {
-  cambiarSilla(id, { ocupadaDesde: new Date().toISOString(), cliente: cliente.trim() })
+// `servicioIds`: el corte (o cortes) que se va a hacer; puede ir vacío
+// y elegirse al cobrar.
+export function ocuparSilla(id, servicioIds = []) {
+  cambiarSilla(id, { ocupadaDesde: new Date().toISOString(), cliente: '', servicioIds })
 }
 
-export function liberarSilla(id) {
+export function cambiarServiciosSilla(id, servicioIds) {
+  cambiarSilla(id, { servicioIds })
+}
+
+// `cobro`: { servicios: [{ nombre, precio }], monto, metodo } o null
+// para liberarla sin cobrar. Queda en el historial con el barbero de
+// ese momento, para la caja por barbero.
+export function liberarSilla(id, cobro = null) {
   const silla = estado.sillas.find((s) => s.id === id)
   if (!silla?.ocupadaDesde) return
   const fin = new Date().toISOString()
   fijar({
     ...estado,
-    sillas: estado.sillas.map((s) => (s.id === id ? { ...s, ocupadaDesde: null, liberadaEn: fin, cliente: '' } : s)),
-    historial: [...estado.historial, { id: nuevoId(), sillaId: id, inicio: silla.ocupadaDesde, fin, cliente: silla.cliente || '' }].slice(-2000),
+    sillas: estado.sillas.map((s) => (s.id === id ? { ...s, ocupadaDesde: null, liberadaEn: fin, cliente: '', servicioIds: [] } : s)),
+    historial: [
+      ...estado.historial,
+      { id: nuevoId(), sillaId: id, barbero: silla.barbero || '', inicio: silla.ocupadaDesde, fin, cliente: silla.cliente || '', cobro },
+    ].slice(-5000),
   })
+}
+
+// --- Cortes y precios -----------------------------------------------------
+
+export function agregarServicio(nombre, precio) {
+  fijar({ ...estado, servicios: [...estado.servicios, { id: nuevoId(), nombre: nombre.trim(), precio: Number(precio) || 0 }] })
+}
+
+export function guardarServicio(id, datos) {
+  fijar({ ...estado, servicios: estado.servicios.map((x) => (x.id === id ? { ...x, ...datos } : x)) })
+}
+
+export function eliminarServicio(id) {
+  fijar({ ...estado, servicios: estado.servicios.filter((x) => x.id !== id) })
 }
 
 // --- Sillas del local -----------------------------------------------------

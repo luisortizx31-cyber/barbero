@@ -2,16 +2,22 @@ import { useEffect, useRef, useState } from 'react'
 import { useEstado, ocuparSilla, liberarSilla, obtenerEstado, restaurar } from '../data/store'
 import { formatearHora, formatearDuracion, useAhora } from '../domain/hora'
 import { SillaImagen } from '../ui/SillaDibujo'
+import { Hoja } from '../ui/Hoja'
+import { HojaOcupar, HojaCobrar } from '../ui/Cobro'
+import { formatearMonto } from '../domain/dinero'
 
 // La pantalla del local: todas las sillas, cuáles están ocupadas (desde
 // qué hora y cuánto llevan) y cuáles están libres (desde qué hora se
-// liberaron). Se toca "Ocupar" o "Liberar" en cada silla. Pensada
+// liberaron). Al ocupar se elige el corte; al liberar se cobra (corte,
+// total y si pagó en efectivo, Yape o Plin). Pensada
 // también para un televisor o tablet en la pared: botón de pantalla
 // completa, letras grandes y colores que se ven de lejos.
 export default function Pantalla({ pantallaCompleta, onPantallaCompleta }) {
-  const { config, sillas } = useEstado()
+  const { config, sillas, servicios } = useEstado()
   const ahora = useAhora(1000)
   const [deshacer, setDeshacer] = useState(null) // { texto, anterior }
+  const [hoja, setHoja] = useState(null) // { tipo: 'ocupar' | 'cobrar', sillaId }
+  const sillaHoja = hoja && sillas.find((s) => s.id === hoja.sillaId)
   const temporizador = useRef(null)
 
   useEffect(() => () => clearTimeout(temporizador.current), [])
@@ -56,8 +62,9 @@ export default function Pantalla({ pantallaCompleta, onPantallaCompleta }) {
               silla={s}
               ahora={ahora}
               grande={pantallaCompleta}
-              onOcupar={() => accion(`${s.nombre} ocupada`, () => ocuparSilla(s.id))}
-              onLiberar={() => accion(`${s.nombre} liberada`, () => liberarSilla(s.id))}
+              servicios={servicios}
+              onOcupar={() => setHoja({ tipo: 'ocupar', sillaId: s.id })}
+              onLiberar={() => setHoja({ tipo: 'cobrar', sillaId: s.id })}
             />
           ))}
         </div>
@@ -73,7 +80,38 @@ export default function Pantalla({ pantallaCompleta, onPantallaCompleta }) {
         </button>
       </div>
 
-      {deshacer && (
+      {sillaHoja && hoja.tipo === 'ocupar' && !sillaHoja.ocupadaDesde && (
+        <Hoja titulo={`Ocupar ${sillaHoja.nombre}`} subtitulo={sillaHoja.barbero ? `✂ ${sillaHoja.barbero}` : null} onCerrar={() => setHoja(null)}>
+          <HojaOcupar
+            silla={sillaHoja}
+            servicios={servicios}
+            onOcupar={(ids) => {
+              accion(`${sillaHoja.nombre} ocupada`, () => ocuparSilla(sillaHoja.id, ids))
+              setHoja(null)
+            }}
+          />
+        </Hoja>
+      )}
+
+      {sillaHoja && hoja.tipo === 'cobrar' && sillaHoja.ocupadaDesde && (
+        <Hoja titulo={`Cobrar ${sillaHoja.nombre}`} onCerrar={() => setHoja(null)}>
+          <HojaCobrar
+            silla={sillaHoja}
+            servicios={servicios}
+            ahora={ahora}
+            onCobrar={(cobro) => {
+              accion(`Cobrado ${formatearMonto(cobro.monto)} · ${sillaHoja.nombre} libre`, () => liberarSilla(sillaHoja.id, cobro))
+              setHoja(null)
+            }}
+            onSinCobrar={() => {
+              accion(`${sillaHoja.nombre} liberada sin cobrar`, () => liberarSilla(sillaHoja.id))
+              setHoja(null)
+            }}
+          />
+        </Hoja>
+      )}
+
+      {deshacer && !hoja && (
         <div role="status" className="fixed inset-x-0 bottom-4 z-50 mx-auto flex w-[calc(100%-2rem)] max-w-sm items-center justify-between gap-3 rounded-2xl bg-tinta px-4 py-3 text-fondo shadow-2xl">
           <span className="text-sm font-semibold">✓ {deshacer.texto}</span>
           <button
@@ -92,8 +130,9 @@ export default function Pantalla({ pantallaCompleta, onPantallaCompleta }) {
   )
 }
 
-function TarjetaSilla({ silla, ahora, grande, onOcupar, onLiberar }) {
+function TarjetaSilla({ silla, ahora, grande, servicios, onOcupar, onLiberar }) {
   const ocupada = Boolean(silla.ocupadaDesde)
+  const cortes = servicios.filter((x) => (silla.servicioIds || []).includes(x.id))
 
   return (
     <div
@@ -126,6 +165,11 @@ function TarjetaSilla({ silla, ahora, grande, onOcupar, onLiberar }) {
             ) : (
               <p className="text-tinta-suave">Lista para atender</p>
             )}
+            {ocupada && cortes.length > 0 && (
+              <p className="text-laton">
+                ✂ {cortes.map((x) => x.nombre).join(' + ')} · <span className="cifra font-bold">{formatearMonto(cortes.reduce((t, x) => t + x.precio, 0))}</span>
+              </p>
+            )}
             {ocupada && silla.liberadaEn && (
               <p className="text-xs text-tinta-suave">Se había liberado a las {formatearHora(silla.liberadaEn)}</p>
             )}
@@ -140,7 +184,7 @@ function TarjetaSilla({ silla, ahora, grande, onOcupar, onLiberar }) {
             onClick={onLiberar}
             className={`w-full rounded-2xl border-2 border-libre bg-libre-suave font-extrabold text-libre active:scale-[0.98] ${grande ? 'py-4 text-xl' : 'py-3 text-base'}`}
           >
-            ✓ Liberar silla
+            💰 Cobrar y liberar
           </button>
         ) : (
           <button
