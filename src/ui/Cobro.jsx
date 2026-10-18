@@ -3,6 +3,7 @@ import { formatearMonto, METODOS } from '../domain/dinero'
 import { formatearHora, formatearDuracion } from '../domain/hora'
 import { fidelidad } from '../domain/clientes'
 import { totalProductos } from '../domain/caja'
+import { FotoBarbero } from './FotoBarbero'
 
 // Los cortes del local como botones para marcar (se puede elegir más
 // de uno, por ejemplo corte + cejas).
@@ -83,7 +84,8 @@ export function ElegirCliente({ clientes, valor, onCambiar, placeholder = 'Nombr
 
 // Al ocupar: quién se sienta (el siguiente de la cola, alguien con
 // cita, un cliente frecuente o uno de paso) y qué corte se va a hacer.
-export function HojaOcupar({ silla, servicios, clientes, espera, citas, onOcupar }) {
+export function HojaOcupar({ silla, servicios, clientes, espera, citas, barberos = [], barberoInicial = null, onOcupar }) {
+  const [barberoId, setBarberoId] = useState(barberoInicial)
   const opciones = [
     ...espera.map((x, i) => ({ clave: `e-${x.id}`, etiqueta: `${i === 0 ? '⏳ Sigue: ' : '⏳ '}${x.nombre}`, nombre: x.nombre, clienteId: x.clienteId, servicioIds: x.servicioIds, esperaId: x.id })),
     ...citas.map((c) => ({ clave: `c-${c.id}`, etiqueta: `📅 ${c.hora} ${c.nombre}`, nombre: c.nombre, clienteId: c.clienteId, servicioIds: c.servicioIds, citaId: c.id })),
@@ -103,6 +105,26 @@ export function HojaOcupar({ silla, servicios, clientes, espera, citas, onOcupar
 
   return (
     <div className="space-y-5">
+      {barberos.length > 0 && (
+        <div>
+          <p className="mb-2 text-xs font-bold uppercase tracking-wide text-tinta-suave">¿Quién corta?</p>
+          <div className="flex gap-2 overflow-x-auto pb-1">
+            {barberos.map((b) => (
+              <button
+                key={b.id}
+                type="button"
+                onClick={() => setBarberoId(b.id)}
+                aria-pressed={barberoId === b.id}
+                className={`flex w-20 shrink-0 flex-col items-center gap-1 rounded-2xl border-2 p-2 ${barberoId === b.id ? 'border-laton bg-laton-suave' : 'border-linea'}`}
+              >
+                <FotoBarbero barbero={b} tam="h-12 w-12" texto="text-sm" />
+                <span className="w-full truncate text-center text-xs font-bold">{b.nombre.split(' ')[0]}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
       <div>
         <p className="mb-2 text-xs font-bold uppercase tracking-wide text-tinta-suave">¿Quién se sienta?</p>
         {opciones.length > 0 && (
@@ -149,7 +171,7 @@ export function HojaOcupar({ silla, servicios, clientes, espera, citas, onOcupar
       <button
         type="button"
         onClick={() =>
-          onOcupar({ servicioIds: cortes, clienteId: quien.clienteId ?? null, nombre: quien.nombre ?? '', esperaId: opcion?.esperaId ?? null, citaId: opcion?.citaId ?? null })
+          onOcupar({ servicioIds: cortes, clienteId: quien.clienteId ?? null, nombre: quien.nombre ?? '', esperaId: opcion?.esperaId ?? null, citaId: opcion?.citaId ?? null, barberoId })
         }
         className="w-full rounded-2xl bg-ocupada py-4 text-base font-extrabold text-white active:scale-[0.98]"
       >

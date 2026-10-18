@@ -7,7 +7,7 @@ import { SillaImagen } from '../ui/SillaDibujo'
 // y cómo se ven en la pantalla - un dibujo del color de la silla, o la
 // FOTO de la silla real del local (pedido del usuario, 2026-10-17).
 export default function Sillas() {
-  const { config, sillas } = useEstado()
+  const { config, sillas, barberos } = useEstado()
   const [nombreLocal, setNombreLocal] = useState(config.nombre)
 
   return (
@@ -44,19 +44,20 @@ export default function Sillas() {
 
       <ul className="space-y-3">
         {sillas.map((s, i) => (
-          <EditorSilla key={s.id} silla={s} primera={i === 0} ultima={i === sillas.length - 1} />
+          <EditorSilla key={s.id} silla={s} barberos={barberos} primera={i === 0} ultima={i === sillas.length - 1} />
         ))}
       </ul>
     </div>
   )
 }
 
-function EditorSilla({ silla, primera, ultima }) {
+function EditorSilla({ silla, barberos, primera, ultima }) {
   const [nombre, setNombre] = useState(silla.nombre)
   const [barbero, setBarbero] = useState(silla.barbero)
   const [subiendo, setSubiendo] = useState(false)
   const archivoRef = useRef(null)
-  const cambios = nombre.trim() !== silla.nombre || barbero.trim() !== silla.barbero
+  // Con barberos registrados, el barbero se elige en la lista (se guarda al toque).
+  const cambios = nombre.trim() !== silla.nombre || (barberos.length === 0 && barbero.trim() !== silla.barbero)
 
   async function subirFoto(e) {
     const archivo = e.target.files?.[0]
@@ -86,17 +87,37 @@ function EditorSilla({ silla, primera, ultima }) {
             aria-label="Nombre de la silla"
             className="w-full rounded-xl border border-linea bg-fondo px-3 py-2 font-bold text-tinta outline-none focus-visible:border-laton"
           />
-          <input
-            value={barbero}
-            onChange={(e) => setBarbero(e.target.value)}
-            placeholder="Barbero (opcional)"
-            aria-label="Barbero"
-            className="w-full rounded-xl border border-linea bg-fondo px-3 py-2 text-sm text-tinta outline-none focus-visible:border-laton"
-          />
+          {barberos.length > 0 ? (
+            // Con barberos registrados se elige de la lista (sale su foto).
+            <select
+              value={silla.barberoId || ''}
+              onChange={(e) => {
+                const b = barberos.find((x) => x.id === e.target.value)
+                guardarSilla(silla.id, { barberoId: b?.id || null, barbero: b?.nombre || '' })
+              }}
+              aria-label="Barbero de esta silla"
+              className="w-full rounded-xl border border-linea bg-fondo px-3 py-2 text-sm text-tinta outline-none focus-visible:border-laton"
+            >
+              <option value="">Sin barbero fijo</option>
+              {barberos.map((b) => (
+                <option key={b.id} value={b.id}>
+                  ✂ {b.nombre}
+                </option>
+              ))}
+            </select>
+          ) : (
+            <input
+              value={barbero}
+              onChange={(e) => setBarbero(e.target.value)}
+              placeholder="Barbero (opcional)"
+              aria-label="Barbero"
+              className="w-full rounded-xl border border-linea bg-fondo px-3 py-2 text-sm text-tinta outline-none focus-visible:border-laton"
+            />
+          )}
           {cambios && (
             <button
               type="button"
-              onClick={() => guardarSilla(silla.id, { nombre: nombre.trim() || silla.nombre, barbero: barbero.trim() })}
+              onClick={() => guardarSilla(silla.id, { nombre: nombre.trim() || silla.nombre, ...(barberos.length === 0 ? { barbero: barbero.trim() } : {}) })}
               className="w-full rounded-xl bg-laton py-2 text-sm font-bold text-fondo"
             >
               Guardar cambios

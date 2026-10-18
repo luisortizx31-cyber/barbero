@@ -119,5 +119,6 @@ export function enlaces(slug) {
     panel: base,
     barbero: `${base}#/barbero/${slug}`,
     pantalla: `${base}#/pantalla/${slug}`,
+    local: `${base}#/local/${slug}`,
   }
 }

@@ -1,7 +1,7 @@
 import { useSyncExternalStore } from 'react'
 import { onAuthStateChanged, signInWithEmailAndPassword, sendPasswordResetEmail, signOut } from 'firebase/auth'
 import { auth } from './firebase'
-import { escucharBarberia, guardarCambios } from './nube'
+import { escucharBarberia, guardarCambios, COLECCIONES_PUBLICAS } from './nube'
 import { SUPER_UID, obtenerPerfil } from './plataforma'
 
 // Todo lo de la barbería: el estado y las acciones que lo cambian.
@@ -74,7 +74,7 @@ function serviciosIniciales() {
   return SERVICIOS_INICIALES.map(([nombre, precio]) => ({ id: nuevoId(), nombre, precio }))
 }
 
-const COLECCIONES = ['historial', 'clientes', 'espera', 'citas', 'productos', 'ventas', 'gastos', 'cierres']
+const COLECCIONES = ['historial', 'clientes', 'espera', 'citas', 'productos', 'ventas', 'gastos', 'cierres', 'barberos']
 
 // Completa lo que le falte a un estado guardado por una versión anterior.
 // Lo que ya está completo se deja tal cual (mismo objeto): así al guardar
@@ -112,11 +112,13 @@ function leerLocal() {
 //                     barberías) o el dueño de una barbería (su panel)
 //   #/barbero/{id}    sin cuenta: los barberos ocupan y cobran sillas
 //   #/pantalla/{id}   sin cuenta: el televisor del local, solo para ver
+//   #/local/{id}      sin cuenta: los clientes, desde su celular, ven qué
+//                     sillas están libres y qué barbero está cortando
 // `estado` es null mientras no llegó la barbería.
 
 export function leerRuta() {
   const partes = (typeof location !== 'undefined' ? location.hash : '').replace(/^#\/?/, '').split('/').filter(Boolean)
-  if ((partes[0] === 'barbero' || partes[0] === 'pantalla') && partes[1]) return { modo: partes[0], id: decodeURIComponent(partes[1]) }
+  if (['barbero', 'pantalla', 'local'].includes(partes[0]) && partes[1]) return { modo: partes[0], id: decodeURIComponent(partes[1]) }
   return { modo: 'panel', id: null }
 }
 
@@ -178,7 +180,7 @@ function conectar(id, { completa, inicializar }) {
       sesion = { ...sesion, cargando: false, error: err.code === 'permission-denied' ? 'No tienes permiso para ver esta barbería.' : err.message }
       avisar()
     },
-    completa ? undefined : []
+    completa ? undefined : COLECCIONES_PUBLICAS
   )
 }
 
@@ -282,13 +284,25 @@ function quitarDe(coleccion, id) {
 // --- Ocupar y liberar ------------------------------------------------------
 
 // `quien`: { clienteId, nombre } del que se sienta (o vacío).
+// `barberoId`: el barbero que corta (registrado, con su foto); la silla
+// pasa a mostrarlo y su nombre queda para la comisión.
 // `esperaId`: si venía de la cola, sale de la cola.
 // `citaId`: si tenía cita, la cita queda atendida.
-export function ocuparSilla(id, { servicioIds = [], clienteId = null, nombre = '', esperaId = null, citaId = null } = {}) {
+export function ocuparSilla(id, { servicioIds = [], clienteId = null, nombre = '', esperaId = null, citaId = null, barberoId } = {}) {
+  const barbero = barberoId ? estado.barberos.find((b) => b.id === barberoId) : null
   fijar({
     ...estado,
     sillas: estado.sillas.map((s) =>
-      s.id === id ? { ...s, ocupadaDesde: new Date().toISOString(), clienteId, cliente: nombre.trim(), servicioIds } : s
+      s.id === id
+        ? {
+            ...s,
+            ocupadaDesde: new Date().toISOString(),
+            clienteId,
+            cliente: nombre.trim(),
+            servicioIds,
+            ...(barbero ? { barberoId: barbero.id, barbero: barbero.nombre } : {}),
+          }
+        : s
     ),
     espera: esperaId ? estado.espera.filter((x) => x.id !== esperaId) : estado.espera,
     citas: citaId ? estado.citas.map((c) => (c.id === citaId ? { ...c, estado: 'atendida' } : c)) : estado.citas,
@@ -330,6 +344,35 @@ function descontarStock(productos, vendidos = []) {
   return productos.map((p) => {
     const v = vendidos.find((x) => x.id === p.id)
     return v && p.stock != null ? { ...p, stock: Math.max(0, p.stock - v.cantidad) } : p
+  })
+}
+
+// --- Barberos ----------------------------------------------------------------
+// Se registran solos desde el enlace de los barberos (nombre, celular y
+// foto), o los agrega el dueño. Se ven en cada silla que ocupan.
+
+export function registrarBarbero({ nombre, telefono = '', foto = null }) {
+  return agregarEn('barberos', { nombre: nombre.trim(), telefono: String(telefono).replace(/[^\d+]/g, ''), foto, creadoEn: new Date().toISOString() })
+}
+
+export function guardarBarbero(id, datos) {
+  const limpio = { ...datos }
+  if ('nombre' in limpio) limpio.nombre = limpio.nombre.trim()
+  if ('telefono' in limpio) limpio.telefono = String(limpio.telefono || '').replace(/[^\d+]/g, '')
+  const barbero = estado.barberos.find((b) => b.id === id)
+  fijar({
+    ...estado,
+    barberos: estado.barberos.map((b) => (b.id === id ? { ...b, ...limpio } : b)),
+    // Si cambió el nombre, las sillas que tiene lo muestran actualizado.
+    sillas: limpio.nombre && barbero && limpio.nombre !== barbero.nombre ? estado.sillas.map((s) => (s.barberoId === id ? { ...s, barbero: limpio.nombre } : s)) : estado.sillas,
+  })
+}
+
+export function eliminarBarbero(id) {
+  fijar({
+    ...estado,
+    barberos: estado.barberos.filter((b) => b.id !== id),
+    sillas: estado.sillas.some((s) => s.barberoId === id) ? estado.sillas.map((s) => (s.barberoId === id ? { ...s, barberoId: null } : s)) : estado.sillas,
   })
 }
 

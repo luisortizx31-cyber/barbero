@@ -18,7 +18,10 @@ import { db } from './firebase'
 // escribe solo lo que cambió.
 
 export const CAMPOS_PRINCIPALES = ['config', 'servicios', 'sillas', 'espera']
-export const COLECCIONES_NUBE = ['historial', 'clientes', 'citas', 'productos', 'ventas', 'gastos', 'cierres']
+export const COLECCIONES_NUBE = ['historial', 'clientes', 'citas', 'productos', 'ventas', 'gastos', 'cierres', 'barberos']
+// Lo que ven sin cuenta (barberos, televisor, clientes): los barberos,
+// para mostrar su foto y su nombre en cada silla.
+export const COLECCIONES_PUBLICAS = ['barberos']
 
 // cierres se identifican por el día
 const idDe = (coleccion, item) => (coleccion === 'cierres' ? item.dia : item.id)
@@ -29,6 +32,7 @@ const ORDEN = {
   gastos: (a, b) => a.fecha.localeCompare(b.fecha),
   clientes: (a, b) => (a.creadoEn || '').localeCompare(b.creadoEn || ''),
   productos: (a, b) => (a.nombre || '').localeCompare(b.nombre || ''),
+  barberos: (a, b) => (a.nombre || '').localeCompare(b.nombre || ''),
 }
 
 // Escucha la barbería `id`. `alCambiar(parcial)` recibe las partes que
@@ -53,7 +57,7 @@ export function escucharBarberia(id, alCambiar, alListo, alError, colecciones = 
         existe = snap.exists()
         if (existe) {
           const d = snap.data()
-          alCambiar({ nombreBarberia: d.nombre, ...Object.fromEntries(CAMPOS_PRINCIPALES.filter((c) => d[c] !== undefined).map((c) => [c, d[c]])) })
+          alCambiar({ nombreBarberia: d.nombre, telefonoBarberia: d.telefono || '', ...Object.fromEntries(CAMPOS_PRINCIPALES.filter((c) => d[c] !== undefined).map((c) => [c, d[c]])) })
         }
         avisarSiListo('principal')
       },

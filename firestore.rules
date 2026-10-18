@@ -53,6 +53,24 @@ service cloud.firestore {
           || (request.resource.data.keys().hasAll(['id', 'sillaId', 'inicio', 'fin']) && request.resource.data.id == id);
       }
 
+      // Barberos: se ven en cada silla (foto y nombre), así que su
+      // lectura es pública. Se registran solos desde su enlace (sin
+      // cuenta) y pueden cambiar su nombre, celular y foto; quitarlos es
+      // solo del dueño. La foto va achicada (~20 KB), con tope.
+      match /barberos/{id} {
+        function fotoValida() {
+          return !('foto' in request.resource.data) || request.resource.data.foto == null
+            || (request.resource.data.foto is string && request.resource.data.foto.size() < 150000);
+        }
+        allow read: if true;
+        allow create: if esDuenoDe(barberiaId)
+          || (request.resource.data.id == id && request.resource.data.nombre is string
+              && request.resource.data.nombre.size() > 0 && request.resource.data.nombre.size() <= 60 && fotoValida());
+        allow update: if esDuenoDe(barberiaId)
+          || (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['nombre', 'telefono', 'foto']) && fotoValida());
+        allow delete: if esDuenoDe(barberiaId);
+      }
+
       match /{coleccion}/{id} {
         allow read, write: if esDuenoDe(barberiaId)
           && coleccion in ['clientes', 'citas', 'productos', 'ventas', 'gastos', 'cierres'];

@@ -113,6 +113,7 @@ export default function Ajustes() {
         <p className="text-sm text-tinta-suave">Mándales estos enlaces. No necesitan contraseña y todos ven las mismas sillas al instante.</p>
         <Enlace titulo="✂ Para tus barberos (ocupan y cobran sillas)" url={e.barbero} />
         <Enlace titulo="📺 Para el televisor del local (solo ver)" url={e.pantalla} />
+        <Enlace titulo="👥 Para tus clientes (ven si hay sitio y quién corta)" url={e.local} />
         <p className="text-xs text-tinta-suave">Los barberos no ven la caja, los clientes ni las citas: eso es solo para ti, con tu correo.</p>
         <button
           type="button"

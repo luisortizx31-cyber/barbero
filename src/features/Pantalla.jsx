@@ -6,6 +6,7 @@ import { esperaEstimada } from '../domain/espera'
 import { SillaImagen } from '../ui/SillaDibujo'
 import { Hoja } from '../ui/Hoja'
 import { HojaOcupar, HojaCobrar, ElegirCliente, ElegirCortes } from '../ui/Cobro'
+import { FotoBarbero } from '../ui/FotoBarbero'
 
 // La pantalla del local: todas las sillas, cuáles están ocupadas (desde
 // qué hora y cuánto llevan) y cuáles están libres (desde qué hora se
@@ -30,9 +31,11 @@ function hora12(hhmm) {
 // televisor entran sin cuenta y no ven las citas (tienen celulares).
 // `enCompleta`: si de verdad está en pantalla completa (el televisor se
 // ve en grande aunque no lo esté).
-export default function Pantalla({ pantallaCompleta, onPantallaCompleta, soloVer = false, conCitas = true, enCompleta = pantallaCompleta }) {
+// `barberoYo`: en el enlace de los barberos, el barbero que está usando
+// el celular (corta él, salvo que elija otro).
+export default function Pantalla({ pantallaCompleta, onPantallaCompleta, soloVer = false, conCitas = true, enCompleta = pantallaCompleta, barberoYo = null }) {
   const estado = useEstado()
-  const { config, sillas, servicios, clientes, espera, historial, productos } = estado
+  const { config, sillas, servicios, clientes, espera, historial, productos, barberos } = estado
   const ahora = useAhora(1000)
   const [deshacer, setDeshacer] = useState(null) // { texto, anterior }
   const [hoja, setHoja] = useState(null) // { tipo: 'ocupar' | 'cobrar' | 'espera', sillaId }
@@ -121,6 +124,7 @@ export default function Pantalla({ pantallaCompleta, onPantallaCompleta, soloVer
               servicios={servicios}
               cita={citaDeSilla(s.id)}
               soloVer={soloVer}
+              barbero={barberos.find((b) => b.id === s.barberoId)}
               onOcupar={() => setHoja({ tipo: 'ocupar', sillaId: s.id })}
               onLiberar={() => setHoja({ tipo: 'cobrar', sillaId: s.id })}
             />
@@ -218,6 +222,8 @@ export default function Pantalla({ pantallaCompleta, onPantallaCompleta, soloVer
             clientes={clientes}
             espera={espera}
             citas={citasParaOcupar(sillaHoja.id)}
+            barberos={barberos}
+            barberoInicial={barberoYo || sillaHoja.barberoId || null}
             onOcupar={(datos) => {
               accion(`${sillaHoja.nombre} ocupada${datos.nombre ? ` · ${datos.nombre}` : ''}`, () => ocuparSilla(sillaHoja.id, datos))
               setHoja(null)
@@ -333,7 +339,7 @@ function AnotarEspera({ clientes, servicios, onAnotar }) {
   )
 }
 
-function TarjetaSilla({ silla, ahora, grande, servicios, cita, soloVer, onOcupar, onLiberar }) {
+function TarjetaSilla({ silla, ahora, grande, servicios, cita, soloVer, barbero, onOcupar, onLiberar }) {
   const ocupada = Boolean(silla.ocupadaDesde)
   const cortes = servicios.filter((x) => (silla.servicioIds || []).includes(x.id))
 
@@ -351,7 +357,15 @@ function TarjetaSilla({ silla, ahora, grande, servicios, cita, soloVer, onOcupar
         </div>
         <div className="min-w-0 flex-1">
           <p className={`truncate font-extrabold ${grande ? 'text-3xl' : 'text-xl'}`}>{silla.nombre}</p>
-          {silla.barbero && <p className={`truncate text-tinta-suave ${grande ? 'text-lg' : 'text-sm'}`}>✂ {silla.barbero}</p>}
+          {(barbero || silla.barbero) && (
+            <div className="mt-1 flex items-center gap-2">
+              {barbero && <FotoBarbero barbero={barbero} tam={grande ? 'h-12 w-12' : 'h-9 w-9'} texto="text-sm" />}
+              <p className={`truncate ${ocupada ? 'font-bold text-tinta' : 'text-tinta-suave'} ${grande ? 'text-xl' : 'text-sm'}`}>
+                ✂ {barbero?.nombre || silla.barbero}
+                {ocupada ? <span className="font-normal text-tinta-suave"> cortando</span> : ''}
+              </p>
+            </div>
+          )}
           <div className={`mt-2 space-y-0.5 ${grande ? 'text-lg' : 'text-sm'}`}>
             {ocupada ? (
               <p>

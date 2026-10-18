@@ -1,5 +1,6 @@
 import { useState } from 'react'
-import { useEstado, guardarCliente, eliminarCliente } from '../data/store'
+import { useEstado, useSesion, guardarCliente, eliminarCliente } from '../data/store'
+import { enlaces } from '../data/plataforma'
 import { resumenCliente, linkWhatsapp } from '../domain/clientes'
 import { formatearMonto } from '../domain/dinero'
 import { formatearHora } from '../domain/hora'
@@ -71,7 +72,7 @@ export default function Clientes() {
                 </p>
                 {r.fidelidad && <Sellos f={r.fidelidad} chico />}
               </button>
-              {filtro === 'recordar' && <BotonRecordar cliente={c} config={config} dias={r.dias} />}
+              <BotonRecordar cliente={c} config={config} resumen={r} />
             </li>
           ))}
         </ul>
@@ -108,14 +109,41 @@ function Sellos({ f, chico }) {
   )
 }
 
-function BotonRecordar({ cliente, config, dias }) {
-  const nombre = cliente.nombre.split(' ')[0]
-  const mensaje = `Hola ${nombre} 👋, te saludamos de ${config.nombre} ✂. Ya van ${dias} días de tu último corte, ¿te esperamos esta semana? 💈`
-  const link = linkWhatsapp(cliente.telefono, mensaje)
+// WhatsApp al cliente (pedido del usuario, 2026-10-18): el recordatorio
+// de que ya le toca volver, cómo va su tarjeta ("llevas 2 cortes, te
+// faltan 3 para uno gratis") y el enlace para ver desde su celular si
+// hay sitio y quién está cortando.
+function mensajeCliente(cliente, config, r, enlace) {
+  const lineas = [`Hola ${cliente.nombre.split(' ')[0]} 👋, te saludamos de *${config.nombre}* ✂`]
+  if (r.dias != null && r.dias >= 7) lineas.push(`Ya van ${r.dias} días de tu último corte, ¿te esperamos esta semana? 💈`)
+  const f = r.fidelidad
+  if (f) {
+    lineas.push('')
+    if (f.tocaGratis) lineas.push('🎁 *¡Tu próximo corte es GRATIS!* Completaste tu tarjeta.')
+    else {
+      const faltan = f.meta - f.sellos
+      lineas.push(
+        `🎁 Tu tarjeta: llevas *${f.sellos} ${f.sellos === 1 ? 'corte' : 'cortes'}*. Te ${faltan === 1 ? 'falta *1 corte*' : `faltan *${faltan} cortes*`} para uno *GRATIS*.`
+      )
+      lineas.push('✂'.repeat(f.sellos) + '▫'.repeat(faltan) + '🎁')
+    }
+  }
+  lineas.push('', `Mira desde tu celular si hay sitio y quién está cortando antes de venir 👇`, enlace)
+  return lineas.join('\n')
+}
+
+function BotonRecordar({ cliente, config, resumen, grande }) {
+  const { barberiaId } = useSesion()
+  const link = linkWhatsapp(cliente.telefono, mensajeCliente(cliente, config, resumen, enlaces(barberiaId).local))
   if (!link) return null
   return (
-    <a href={link} target="_blank" rel="noopener noreferrer" className="shrink-0 rounded-xl bg-libre px-3 py-2 text-xs font-bold text-white">
-      💬 Recordar
+    <a
+      href={link}
+      target="_blank"
+      rel="noopener noreferrer"
+      className={`shrink-0 rounded-xl bg-libre font-bold text-white ${grande ? 'block w-full py-3 text-center' : 'px-3 py-2 text-xs'}`}
+    >
+      💬 {grande ? 'Mandarle su tarjeta y el enlace por WhatsApp' : 'WhatsApp'}
     </a>
   )
 }
@@ -151,7 +179,7 @@ function FichaCliente({ cliente, estado, servicios, onListo }) {
               </p>
             </div>
           )}
-          {cliente.telefono && r.dias != null && <BotonRecordar cliente={cliente} config={estado.config} dias={r.dias} />}
+          {cliente.telefono && <BotonRecordar cliente={cliente} config={estado.config} resumen={r} grande />}
         </>
       )}
 

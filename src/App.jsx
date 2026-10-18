@@ -2,6 +2,12 @@ import { useEffect, useState } from 'react'
 import { useEstado, useSesion, salir } from './data/store'
 import Entrar from './features/Entrar'
 import Plataforma from './features/Plataforma'
+import Local from './features/Local'
+import SoyBarbero from './features/SoyBarbero'
+import Barberos from './features/Barberos'
+import { FotoBarbero } from './ui/FotoBarbero'
+import { FormBarbero } from './features/Barberos'
+import { Hoja } from './ui/Hoja'
 import Pantalla from './features/Pantalla'
 import Citas from './features/Citas'
 import Clientes from './features/Clientes'
@@ -22,10 +28,11 @@ const PESTANAS = [
   { id: 'mas', icono: '☰', texto: 'Más' },
 ]
 
-const PANTALLAS = { citas: Citas, clientes: Clientes, caja: Caja, resumen: Resumen, cortes: Cortes, productos: Productos, sillas: Sillas, ajustes: Ajustes }
+const PANTALLAS = { citas: Citas, clientes: Clientes, caja: Caja, resumen: Resumen, cortes: Cortes, productos: Productos, sillas: Sillas, ajustes: Ajustes, barberos: Barberos }
 const CLAVE_PESTANA = 'barberia:pestana'
 
 // Quién entra (ver leerRuta en store.js):
+//   clientes  (#/local/{id})     -> si hay sitio y quién corta, solo ver
 //   televisor (#/pantalla/{id})  -> solo las sillas, sin botones
 //   barberos  (#/barbero/{id})   -> las sillas: ocupar y cobrar
 //   Luis (plataforma)            -> las barberías
@@ -40,13 +47,63 @@ export default function App() {
     if (sesion.rol === 'super') return <Plataforma />
   }
   if (!estado) return <Cargando texto="Cargando la barbería…" />
+  if (sesion.modo === 'local') return <Local />
   if (sesion.modo === 'pantalla') return <SoloPantalla soloVer />
-  if (sesion.modo === 'barbero') return <SoloPantalla />
+  if (sesion.modo === 'barbero') return <AppBarbero barberiaId={sesion.barberiaId} />
   return <AppBarberia />
 }
 
+// Enlace de los barberos: primero "¿quién eres?" (queda recordado en su
+// celular), después la pantalla de sillas con su foto arriba.
+function AppBarbero({ barberiaId }) {
+  const { barberos } = useEstado()
+  const clave = `barberia:yo:${barberiaId}`
+  const [yoId, setYoId] = useState(() => {
+    try {
+      return localStorage.getItem(clave)
+    } catch {
+      return null
+    }
+  })
+  const [editando, setEditando] = useState(false)
+  const yo = barberos.find((b) => b.id === yoId)
+
+  function elegir(id) {
+    setYoId(id)
+    try {
+      if (id) localStorage.setItem(clave, id)
+      else localStorage.removeItem(clave)
+    } catch {
+      // sin localStorage, se pregunta cada vez
+    }
+  }
+
+  if (!yo) return <SoyBarbero onElegir={elegir} />
+  return (
+    <>
+      <div className="mx-auto flex max-w-6xl items-center gap-3 px-4 pt-4">
+        <button type="button" onClick={() => setEditando(true)} aria-label="Mi foto y mis datos">
+          <FotoBarbero barbero={yo} />
+        </button>
+        <div className="min-w-0 flex-1">
+          <p className="truncate font-extrabold">Hola, {yo.nombre.split(' ')[0]} ✂</p>
+          <button type="button" onClick={() => elegir(null)} className="text-xs text-tinta-suave underline decoration-dotted">
+            No soy yo
+          </button>
+        </div>
+      </div>
+      <SoloPantalla barberoYo={yo.id} />
+      {editando && (
+        <Hoja titulo="Mis datos" onCerrar={() => setEditando(false)}>
+          <FormBarbero barbero={yo} onListo={() => setEditando(false)} />
+        </Hoja>
+      )}
+    </>
+  )
+}
+
 // Televisor y barberos: solo la pantalla de sillas, sin pestañas.
-function SoloPantalla({ soloVer }) {
+function SoloPantalla({ soloVer, barberoYo }) {
   const [completa, setCompleta] = useState(false)
   async function alternar() {
     if (completa) {
@@ -59,7 +116,7 @@ function SoloPantalla({ soloVer }) {
   }
   return (
     <main className={`mx-auto p-4 ${completa ? 'max-w-none sm:p-8' : 'max-w-6xl'}`}>
-      <Pantalla pantallaCompleta={completa || soloVer} enCompleta={completa} soloVer={soloVer} conCitas={false} onPantallaCompleta={alternar} />
+      <Pantalla pantallaCompleta={completa || soloVer} enCompleta={completa} soloVer={soloVer} conCitas={false} onPantallaCompleta={alternar} barberoYo={barberoYo} />
     </main>
   )
 }

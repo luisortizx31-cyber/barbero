@@ -170,6 +170,7 @@ function FichaBarberia({ barberia: b, recienCreada, onCambio, onBorrada }) {
     '',
     `*Para tus barberos* (sin contraseña): ${e.barbero}`,
     `*Para el televisor del local:* ${e.pantalla}`,
+    `*Para tus clientes* (ven si hay sitio): ${e.local}`,
   ]
     .filter((x, i, a) => x !== '' || a[i - 1] !== '')
     .join('\n')
@@ -183,6 +184,7 @@ function FichaBarberia({ barberia: b, recienCreada, onCambio, onBorrada }) {
         <Enlace titulo="Panel del dueño (con su correo)" url={e.panel} />
         <Enlace titulo="Barberos (sin contraseña)" url={e.barbero} />
         <Enlace titulo="Televisor (solo ver)" url={e.pantalla} />
+        <Enlace titulo="Clientes (si hay sitio y quién corta)" url={e.local} />
       </div>
 
       <div className="rounded-2xl border border-linea bg-fondo p-3 text-sm">
