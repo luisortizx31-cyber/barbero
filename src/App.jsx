@@ -1,21 +1,35 @@
 import { useEffect, useState } from 'react'
+import { useEstado } from './data/store'
 import Pantalla from './features/Pantalla'
-import Sillas from './features/Sillas'
-import Historial from './features/Historial'
+import Citas from './features/Citas'
+import Clientes from './features/Clientes'
+import Caja from './features/Historial'
+import Mas from './features/Mas'
+import { SECCIONES_MAS } from './domain/secciones'
+import Resumen from './features/Resumen'
 import Cortes from './features/Cortes'
+import Productos from './features/Productos'
+import Sillas from './features/Sillas'
+import Ajustes from './features/Ajustes'
 
 const PESTANAS = [
-  { id: 'pantalla', texto: '💈 Pantalla', Componente: Pantalla },
-  { id: 'historial', texto: '💰 Caja', Componente: Historial },
-  { id: 'cortes', texto: '✂ Cortes', Componente: Cortes },
-  { id: 'sillas', texto: '🪑 Sillas', Componente: Sillas },
+  { id: 'pantalla', icono: '💈', texto: 'Sillas' },
+  { id: 'citas', icono: '📅', texto: 'Citas' },
+  { id: 'clientes', icono: '👥', texto: 'Clientes' },
+  { id: 'caja', icono: '💰', texto: 'Caja' },
+  { id: 'mas', icono: '☰', texto: 'Más' },
 ]
+
+const PANTALLAS = { citas: Citas, clientes: Clientes, caja: Caja, resumen: Resumen, cortes: Cortes, productos: Productos, sillas: Sillas, ajustes: Ajustes }
 const CLAVE_PESTANA = 'barberia:pestana'
 
 export default function App() {
-  const [pestana, setPestana] = useState(() => {
+  const { citas } = useEstado()
+  // `vista`: una pestaña, o una sección de "Más" (resumen, cortes...).
+  const [vista, setVista] = useState(() => {
     try {
-      return localStorage.getItem(CLAVE_PESTANA) || 'pantalla'
+      const v = localStorage.getItem(CLAVE_PESTANA)
+      return v === 'historial' ? 'caja' : v || 'pantalla'
     } catch {
       return 'pantalla'
     }
@@ -32,8 +46,9 @@ export default function App() {
     return () => document.removeEventListener('fullscreenchange', alCambiar)
   }, [])
 
-  function elegir(id) {
-    setPestana(id)
+  function ir(id) {
+    setVista(id)
+    window.scrollTo(0, 0)
     try {
       localStorage.setItem(CLAVE_PESTANA, id)
     } catch {
@@ -51,34 +66,54 @@ export default function App() {
     await document.documentElement.requestFullscreen?.().catch(() => {})
   }
 
-  const { Componente } = PESTANAS.find((p) => p.id === pestana) ?? PESTANAS[0]
+  const seccionMas = SECCIONES_MAS.find((s) => s.id === vista)
+  const pestanaActiva = seccionMas ? 'mas' : vista
+  const Componente = PANTALLAS[vista]
+  const hoy = new Date()
+  const claveHoy = `${hoy.getFullYear()}-${String(hoy.getMonth() + 1).padStart(2, '0')}-${String(hoy.getDate()).padStart(2, '0')}`
+  const citasHoy = citas.filter((c) => c.fecha === claveHoy && c.estado === 'pendiente').length
 
   return (
-    <div className="min-h-svh">
+    <div className="min-h-svh pb-20">
+      <main className={`mx-auto p-4 ${completa ? 'max-w-none sm:p-8' : 'max-w-6xl'}`}>
+        {seccionMas && !completa && (
+          <button type="button" onClick={() => ir('mas')} className="mb-4 rounded-xl border border-linea px-3 py-2 text-sm text-tinta-suave">
+            ‹ Más
+          </button>
+        )}
+        {vista === 'pantalla' || completa ? (
+          <Pantalla pantallaCompleta={completa} onPantallaCompleta={alternarCompleta} />
+        ) : vista === 'mas' ? (
+          <Mas onIr={ir} />
+        ) : Componente ? (
+          <Componente />
+        ) : (
+          <Pantalla pantallaCompleta={false} onPantallaCompleta={alternarCompleta} />
+        )}
+      </main>
+
+      {/* Pestañas abajo, a mano del pulgar */}
       {!completa && (
-        <nav className="sticky top-0 z-40 border-b border-linea bg-fondo/95 backdrop-blur">
-          <div className="mx-auto flex max-w-6xl gap-1 p-2">
+        <nav className="fixed inset-x-0 bottom-0 z-40 border-t border-linea bg-fondo/95 pb-[env(safe-area-inset-bottom)] backdrop-blur">
+          <div className="mx-auto flex max-w-2xl">
             {PESTANAS.map((p) => (
               <button
                 key={p.id}
                 type="button"
-                onClick={() => elegir(p.id)}
-                aria-current={pestana === p.id ? 'page' : undefined}
-                className={`flex-1 rounded-xl px-1 py-2.5 text-xs font-bold sm:text-sm ${pestana === p.id ? 'bg-laton text-fondo' : 'text-tinta-suave'}`}
+                onClick={() => ir(p.id)}
+                aria-current={pestanaActiva === p.id ? 'page' : undefined}
+                className={`relative flex flex-1 flex-col items-center gap-0.5 py-2 text-[11px] font-bold ${pestanaActiva === p.id ? 'text-laton' : 'text-tinta-suave'}`}
               >
+                <span className="text-xl leading-none">{p.icono}</span>
                 {p.texto}
+                {p.id === 'citas' && citasHoy > 0 && (
+                  <span className="absolute right-[22%] top-1 rounded-full bg-ocupada px-1.5 text-[10px] leading-4 text-white">{citasHoy}</span>
+                )}
               </button>
             ))}
           </div>
         </nav>
       )}
-      <main className={`mx-auto p-4 ${completa ? 'max-w-none sm:p-8' : 'max-w-6xl'}`}>
-        {pestana === 'pantalla' || completa ? (
-          <Pantalla pantallaCompleta={completa} onPantallaCompleta={alternarCompleta} />
-        ) : (
-          <Componente />
-        )}
-      </main>
     </div>
   )
 }
