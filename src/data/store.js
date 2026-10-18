@@ -1,11 +1,12 @@
 import { useSyncExternalStore } from 'react'
+import { onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword, sendPasswordResetEmail, signOut } from 'firebase/auth'
+import { auth } from './firebase'
+import { escucharBarberia, guardarCambios } from './nube'
 
-// Todo lo de la barbería se guarda en ESTE equipo (localStorage), sin
-// cuentas ni servidor - igual que servicio-electrico. Toda la
-// persistencia está acá: para que varios celulares vean las mismas
-// sillas (los barberos marcan desde su celular y la pantalla del local
-// se actualiza sola) basta con cambiar este archivo por una base en la
-// nube.
+// Todo lo de la barbería: el estado y las acciones que lo cambian.
+// Al principio vivía solo en este equipo (localStorage); desde el
+// 2026-10-18 se guarda en Firebase (ver más abajo y nube.js) para que
+// varios celulares y el televisor vean lo mismo.
 //
 // estado = {
 //   config:    { nombre, comisionPct, fidelidadCada, diasRecordatorio }
@@ -85,40 +86,83 @@ function inicial() {
   return completar({ config: { ...CONFIG_INICIAL }, servicios: serviciosIniciales(), sillas: [1, 2, 3].map(sillaNueva) })
 }
 
-function leer() {
+// Lo que había guardado en ESTE equipo antes de la nube (la versión
+// sin cuenta): se sube solo la primera vez que se entra con una cuenta
+// nueva, para no perder nada.
+function leerLocal() {
   try {
     const guardado = JSON.parse(localStorage.getItem(CLAVE))
     if (guardado?.sillas) return completar(guardado)
   } catch (err) {
-    console.error('[store] leer', err)
+    console.error('[store] leer local', err)
   }
-  return inicial()
+  return null
 }
 
-let estado = leer()
+// --- Sesión y nube --------------------------------------------------------
+// Desde el 2026-10-18 todo vive en Firebase (proyecto "barberia"): se
+// entra con el correo de la barbería en cada celular y en el televisor,
+// y todos ven lo mismo al instante. `estado` es null mientras no hay
+// sesión o todavía no llegó la barbería.
+
+let estado = null
+let sesion = { cargando: true, usuario: null, listo: false, error: null, migrado: false }
+let uid = null
+let dejarDeEscuchar = null
 const oyentes = new Set()
+const avisar = () => oyentes.forEach((fn) => fn())
 
 function fijar(nuevo) {
+  const antes = estado
   estado = nuevo
-  try {
-    localStorage.setItem(CLAVE, JSON.stringify(nuevo))
-  } catch (err) {
-    console.error('[store] guardar', err)
-    alert('No se pudo guardar. Si subiste muchas fotos, prueba con una más chica.')
-  }
-  oyentes.forEach((fn) => fn())
-}
-
-// Si la pantalla está abierta en otra pestaña o ventana del mismo
-// equipo (por ejemplo, en el televisor conectado a la compu), se
-// actualiza sola cuando se marca una silla desde la otra.
-if (typeof window !== 'undefined') {
-  window.addEventListener('storage', (e) => {
-    if (e.key !== CLAVE) return
-    estado = leer()
-    oyentes.forEach((fn) => fn())
+  avisar()
+  if (!uid) return
+  guardarCambios(uid, antes, nuevo).catch((err) => {
+    console.error('[store] guardar en la nube', err)
+    alert(`No se pudo guardar: ${err.message}`)
   })
 }
+
+onAuthStateChanged(auth, (usuario) => {
+  dejarDeEscuchar?.()
+  dejarDeEscuchar = null
+  estado = null
+  uid = usuario?.uid ?? null
+  sesion = { cargando: Boolean(usuario), usuario, listo: false, error: null, migrado: false }
+  avisar()
+  if (!usuario) return
+
+  let armado = {}
+  dejarDeEscuchar = escucharBarberia(
+    usuario.uid,
+    (parcial) => {
+      if (!sesion.listo) {
+        armado = { ...armado, ...parcial }
+        return
+      }
+      estado = completar({ ...estado, ...parcial })
+      avisar()
+    },
+    (existe) => {
+      sesion = { ...sesion, cargando: false, listo: true }
+      if (existe) {
+        estado = completar(armado)
+        avisar()
+        return
+      }
+      // Cuenta nueva: se sube lo que había en este equipo, o se empieza
+      // con 3 sillas y los cortes de ejemplo.
+      const local = leerLocal()
+      sesion = { ...sesion, migrado: Boolean(local) }
+      fijar(local ?? inicial())
+    },
+    (err) => {
+      console.error('[store] escuchar', err)
+      sesion = { ...sesion, cargando: false, error: err.message }
+      avisar()
+    }
+  )
+})
 
 function suscribir(fn) {
   oyentes.add(fn)
@@ -127,6 +171,53 @@ function suscribir(fn) {
 
 export function useEstado() {
   return useSyncExternalStore(suscribir, () => estado)
+}
+
+export function useSesion() {
+  return useSyncExternalStore(suscribir, () => sesion)
+}
+
+const MENSAJES_AUTH = {
+  'auth/invalid-credential': 'Correo o contraseña incorrectos.',
+  'auth/invalid-email': 'Ese correo no es válido.',
+  'auth/email-already-in-use': 'Ya existe una cuenta con ese correo. Entra con tu contraseña.',
+  'auth/weak-password': 'La contraseña tiene que tener al menos 6 letras o números.',
+  'auth/too-many-requests': 'Demasiados intentos. Espera un momento y vuelve a probar.',
+  'auth/network-request-failed': 'Sin internet. Revisa la conexión.',
+  'auth/configuration-not-found': 'Falta activar el inicio de sesión con correo en Firebase.',
+  'auth/operation-not-allowed': 'Falta activar el inicio de sesión con correo en Firebase.',
+}
+
+function traducir(err) {
+  return new Error(MENSAJES_AUTH[err.code] || err.message)
+}
+
+export async function entrar(correo, clave) {
+  try {
+    await signInWithEmailAndPassword(auth, correo.trim(), clave)
+  } catch (err) {
+    throw traducir(err)
+  }
+}
+
+export async function crearCuenta(correo, clave) {
+  try {
+    await createUserWithEmailAndPassword(auth, correo.trim(), clave)
+  } catch (err) {
+    throw traducir(err)
+  }
+}
+
+export async function recuperarClave(correo) {
+  try {
+    await sendPasswordResetEmail(auth, correo.trim())
+  } catch (err) {
+    throw traducir(err)
+  }
+}
+
+export function salir() {
+  return signOut(auth)
 }
 
 function cambiarSilla(id, cambios) {
@@ -366,11 +457,7 @@ export function importarCopia(texto) {
 }
 
 export function pesoGuardado() {
-  try {
-    return (localStorage.getItem(CLAVE) || '').length
-  } catch {
-    return 0
-  }
+  return estado ? JSON.stringify(estado).length : 0
 }
 
 // --- Deshacer -----------------------------------------------------------------

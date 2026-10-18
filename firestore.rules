@@ -1,0 +1,18 @@
+rules_version = '2';
+
+// Cada barbería (una por cuenta) vive en barberias/{uid}. Solo esa
+// cuenta, con sesión iniciada, puede leer y escribir lo suyo: su
+// documento principal y todas sus colecciones (historial, clientes,
+// citas, productos, ventas, gastos, cierres). Nada más es accesible.
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /barberias/{uid} {
+      allow read, write: if request.auth != null && request.auth.uid == uid;
+
+      match /{coleccion}/{id} {
+        allow read, write: if request.auth != null && request.auth.uid == uid
+          && coleccion in ['historial', 'clientes', 'citas', 'productos', 'ventas', 'gastos', 'cierres'];
+      }
+    }
+  }
+}

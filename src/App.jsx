@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
-import { useEstado } from './data/store'
+import { useEstado, useSesion } from './data/store'
+import Entrar from './features/Entrar'
 import Pantalla from './features/Pantalla'
 import Citas from './features/Citas'
 import Clientes from './features/Clientes'
@@ -23,7 +24,30 @@ const PESTANAS = [
 const PANTALLAS = { citas: Citas, clientes: Clientes, caja: Caja, resumen: Resumen, cortes: Cortes, productos: Productos, sillas: Sillas, ajustes: Ajustes }
 const CLAVE_PESTANA = 'barberia:pestana'
 
+// Sin sesión: pantalla para entrar. Con sesión, mientras llega la
+// barbería de la nube: "Cargando…".
 export default function App() {
+  const sesion = useSesion()
+  const estado = useEstado()
+  if (sesion.cargando && !sesion.usuario) return <Cargando texto="Abriendo…" />
+  if (!sesion.usuario) return <Entrar />
+  if (sesion.error) return <Cargando texto={`No se pudo abrir la barbería: ${sesion.error}`} />
+  if (!estado) return <Cargando texto="Cargando la barbería…" />
+  return <AppBarberia />
+}
+
+function Cargando({ texto }) {
+  return (
+    <div className="flex min-h-svh flex-col items-center justify-center gap-3 p-6 text-center">
+      <p className="text-5xl" aria-hidden="true">
+        💈
+      </p>
+      <p className="text-tinta-suave">{texto}</p>
+    </div>
+  )
+}
+
+function AppBarberia() {
   const { citas } = useEstado()
   // `vista`: una pestaña, o una sección de "Más" (resumen, cortes...).
   const [vista, setVista] = useState(() => {

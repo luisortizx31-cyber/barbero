@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react'
-import { useEstado, guardarConfig, exportarCopia, importarCopia, pesoGuardado } from '../data/store'
+import { useEstado, useSesion, guardarConfig, exportarCopia, importarCopia, pesoGuardado, salir } from '../data/store'
 import { claveDia } from '../domain/hora'
 
 // Ajustes del local: nombre, comisión de los barberos, tarjeta de
@@ -8,6 +8,7 @@ import { claveDia } from '../domain/hora'
 // recupera).
 export default function Ajustes() {
   const { config, clientes, historial } = useEstado()
+  const { usuario } = useSesion()
   const [datos, setDatos] = useState({ ...config })
   const [aviso, setAviso] = useState(null)
   const [error, setError] = useState(null)
@@ -103,9 +104,25 @@ export default function Ajustes() {
         </div>
       </form>
 
+      <Bloque titulo="📱 Cuenta y otros equipos">
+        <p className="text-sm">
+          Cuenta: <span className="font-bold">{usuario?.email}</span>
+        </p>
+        <p className="text-sm text-tinta-suave">
+          Para usarla en el celular de cada barbero o en el televisor del local, abre <span className="font-bold text-tinta">luisortizx31-cyber.github.io/barbero</span> y entra con este mismo correo y contraseña. Todos ven las mismas sillas al instante.
+        </p>
+        <button
+          type="button"
+          onClick={() => confirm('¿Salir de la cuenta en este equipo? Los datos quedan guardados en la nube.') && salir()}
+          className="rounded-xl border border-linea px-4 py-2.5 font-bold text-tinta-suave"
+        >
+          Salir de la cuenta
+        </button>
+      </Bloque>
+
       <Bloque titulo="💾 Copia de seguridad">
         <p className="text-sm text-tinta-suave">
-          Todo se guarda en este equipo ({clientes.length} clientes, {historial.length} atenciones, {kb} KB). Baja una copia cada cierto tiempo y guárdala en otro lado (tu WhatsApp, correo, Drive): si se pierde o cambias el celular, con la copia lo recuperas todo.
+          Todo se guarda en la nube ({clientes.length} clientes, {historial.length} atenciones, {kb} KB). Igual conviene bajar una copia de vez en cuando y guardarla en tu WhatsApp, correo o Drive, por si algún día se borra algo por error.
         </p>
         <div className="flex flex-wrap gap-2">
           <button type="button" onClick={bajarCopia} className="rounded-xl bg-laton px-4 py-2.5 font-bold text-fondo">
