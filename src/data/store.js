@@ -35,7 +35,6 @@ import { SUPER_UID, obtenerPerfil } from './plataforma'
 //   cierres:   [{ dia, esperado, contado, nota, hora }]  cierre de caja del efectivo
 // }
 
-const CLAVE = 'barberia:v1'
 
 export const COLORES = ['#8b1e2d', '#1d1d1f', '#6b3e1f', '#1f4e79', '#2f5d3a', '#c9a227', '#f2ede4']
 
@@ -90,19 +89,6 @@ function inicial(nombre) {
   return completar({ config: { ...CONFIG_INICIAL, nombre: nombre || CONFIG_INICIAL.nombre }, servicios: serviciosIniciales(), sillas: [1, 2, 3].map(sillaNueva) })
 }
 
-// Lo que había guardado en ESTE equipo antes de la nube (la versión
-// sin cuenta): se sube solo la primera vez que el dueño abre su
-// barbería, para no perder nada.
-function leerLocal() {
-  try {
-    const guardado = JSON.parse(localStorage.getItem(CLAVE))
-    if (guardado?.sillas) return completar(guardado)
-  } catch (err) {
-    console.error('[store] leer local', err)
-  }
-  return null
-}
-
 // --- Sesión y nube --------------------------------------------------------
 // Desde el 2026-10-18 todo vive en Firebase (proyecto "barberia"), con
 // varias barberías (multitenant, copiado de las líneas de
@@ -125,7 +111,7 @@ export function leerRuta() {
 const RUTA = leerRuta()
 let estado = null
 // rol: 'super' (Luis) | 'dueno' | 'barbero' | 'pantalla'
-let sesion = { modo: RUTA.modo, cargando: true, usuario: null, rol: null, barberiaId: RUTA.id, listo: false, error: null, migrado: false }
+let sesion = { modo: RUTA.modo, cargando: true, usuario: null, rol: null, barberiaId: RUTA.id, listo: false, error: null }
 let barberiaId = null
 let dejarDeEscuchar = null
 const oyentes = new Set()
@@ -146,7 +132,7 @@ function fijar(nuevo) {
 // caja...); los barberos y el televisor, solo las sillas y la espera.
 // `inicializar`: si la barbería todavía no tiene sus datos (recién
 // creada por la plataforma), el dueño la arranca con 3 sillas y los
-// cortes de ejemplo, o con lo que tenía en este equipo.
+// cortes de ejemplo.
 function conectar(id, { completa, inicializar }) {
   barberiaId = id
   let armado = {}
@@ -166,10 +152,12 @@ function conectar(id, { completa, inicializar }) {
         estado = completar(armado)
         avisar()
       } else if (inicializar) {
-        const local = leerLocal()
-        sesion = { ...sesion, cargando: false, listo: true, migrado: Boolean(local) }
-        const nombre = armado.nombreBarberia
-        fijar(local ? { ...local, config: { ...local.config, nombre: nombre || local.config.nombre } } : inicial(nombre))
+        // Barbería recién creada: arranca limpia. (Antes se subía lo que el
+        // equipo tenía guardado de cuando todo era local, y una barbería
+        // nueva abierta en el celular de Luis se llevó sus pruebas viejas:
+        // bug real, 2026-10-18.)
+        sesion = { ...sesion, cargando: false, listo: true }
+        fijar(inicial(armado.nombreBarberia))
       } else {
         sesion = { ...sesion, cargando: false, error: 'Esta barbería no existe, o su dueño todavía no la abrió.' }
         avisar()
@@ -194,7 +182,7 @@ if (RUTA.modo !== 'panel') {
     dejarDeEscuchar = null
     estado = null
     barberiaId = null
-    sesion = { ...sesion, cargando: Boolean(usuario), usuario, rol: null, barberiaId: null, listo: false, error: null, migrado: false }
+    sesion = { ...sesion, cargando: Boolean(usuario), usuario, rol: null, barberiaId: null, listo: false, error: null }
     avisar()
     if (!usuario) return
     if (usuario.uid === SUPER_UID) {
