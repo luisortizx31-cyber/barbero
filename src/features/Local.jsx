@@ -283,7 +283,7 @@ export default function Local() {
         <Hoja titulo="Reservar cita" onCerrar={() => setHoja(null)}>
           <ReservarCita
             barberoInicial={citaCon}
-            estado={{ config, servicios, barberos, agenda, fichas, bloqueos, capacidad: sillas.length, telefonoBarberia }}
+            estado={{ config, servicios, barberos, agenda, fichas, bloqueos, sillas, espera, capacidad: sillas.length, telefonoBarberia }}
             onReservada={(cita) => setMiCita(cita)}
             onCerrar={() => setHoja(null)}
           />
@@ -307,6 +307,8 @@ export default function Local() {
             servicios={servicios}
             barberos={barberos}
             fichas={fichas}
+            sillas={sillas}
+            espera={espera}
             onAnotar={(datos) => {
               const nuevo = anotarEnEspera({ ...datos, web: true })
               setMiTurno({ id: nuevo.id, nombre: datos.nombre, barberoNombre: barberos.find((b) => b.id === datos.barberoId)?.nombre || '' })
@@ -612,6 +614,17 @@ function MiCuenta({ fichas, onCambio, onReservar }) {
   )
 }
 
+// Por qué este cliente no puede reservar ni anotarse ahora (pedido del
+// usuario, 2026-10-20: "si Luis se está cortando en la silla 1, ¿cómo
+// puede reservar?"), o null. `cola`: también si ya está en la cola.
+function impedimento(clienteId, { sillas, espera }, cola = false) {
+  if (!clienteId) return null
+  const silla = sillas.find((s) => s.ocupadaDesde && s.clienteId === clienteId)
+  if (silla) return `Te estás cortando ahora en ${silla.nombre}. Cuando termines puedes reservar o anotarte.`
+  if (cola && espera.some((x) => x.clienteId === clienteId)) return 'Ya estás anotado en la cola de hoy.'
+  return null
+}
+
 function ReservarCita({ estado, barberoInicial = null, onReservada, onCerrar }) {
   const { config, servicios, barberos, agenda, fichas, bloqueos, capacidad, telefonoBarberia } = estado
   const { barberiaId } = useSesion()
@@ -632,7 +645,8 @@ function ReservarCita({ estado, barberoInicial = null, onReservada, onCerrar }) 
   const revision = hora ? revisarHora({ clave: dia, hora, duracion, barberoId, barberoNombre: barbero?.nombre, agenda, bloqueos, horario: config.horario, capacidad }) : null
   const horaOk = Boolean(revision?.ok)
   // Hay que estar registrado (buscarse o registrarse) para reservar.
-  const datosOk = Boolean(quien.clienteId)
+  const impide = impedimento(quien.clienteId, estado)
+  const datosOk = Boolean(quien.clienteId) && !impide
 
   if (hecha) {
     const texto = `Hola ${config.nombre} 👋, reservé una cita por la página: ${formatearDia(hecha.fecha)} a las ${hora12(hecha.hora)}${barbero ? ` con ${barbero.nombre}` : ''}, a nombre de ${hecha.nombre}.`
@@ -728,6 +742,7 @@ function ReservarCita({ estado, barberoInicial = null, onReservada, onCerrar }) 
       </Paso>
 
       <p className="text-center text-xs text-tinta-suave">⌛ Se te espera máximo {tolerancia(config)} minutos después de tu hora.</p>
+      {impide && <p className="rounded-xl bg-ocupada-suave px-3 py-2.5 text-center text-sm font-bold text-ocupada">✂ {impide}</p>}
       {error && <p className="rounded-xl bg-ocupada-suave px-3 py-2.5 text-center text-sm font-bold text-ocupada">{error}</p>}
       <button
         type="button"
@@ -748,15 +763,16 @@ function ReservarCita({ estado, barberoInicial = null, onReservada, onCerrar }) 
         }}
         className="w-full rounded-2xl bg-laton py-4 text-base font-extrabold text-fondo disabled:opacity-40"
       >
-        {enviando ? 'Reservando…' : !datosOk ? 'Primero búscate o regístrate' : horaOk ? `✓ Reservar ${hora12(hora)}` : 'Elige una hora libre'}
+        {enviando ? 'Reservando…' : impide ? 'Ahora no puedes reservar' : !datosOk ? 'Primero búscate o regístrate' : horaOk ? `✓ Reservar ${hora12(hora)}` : 'Elige una hora libre'}
       </button>
     </div>
   )
 }
 
-function Anotarme({ servicios, barberos, fichas, onAnotar }) {
+function Anotarme({ servicios, barberos, fichas, sillas, espera, onAnotar }) {
   const { barberiaId } = useSesion()
   const [quien, setQuien] = useState(() => quienRecordado(barberiaId, fichas))
+  const impide = impedimento(quien.clienteId, { sillas, espera }, true)
   const [barberoId, setBarberoId] = useState(null)
   const [cortes, setCortes] = useState(() => fichas.find((f) => f.id === quien.clienteId)?.servicioIds?.filter((id) => servicios.some((x) => x.id === id)) || [])
   return (
@@ -778,13 +794,14 @@ function Anotarme({ servicios, barberos, fichas, onAnotar }) {
       <Paso n="?" titulo="¿Qué te vas a hacer? (opcional)">
         <ElegirCortes servicios={servicios} elegidos={cortes} onCambiar={setCortes} />
       </Paso>
+      {impide && <p className="rounded-xl bg-ocupada-suave px-3 py-2.5 text-center text-sm font-bold text-ocupada">✂ {impide}</p>}
       <button
         type="button"
-        disabled={!quien.clienteId}
+        disabled={!quien.clienteId || Boolean(impide)}
         onClick={() => onAnotar({ clienteId: quien.clienteId, nombre: quien.nombre, barberoId, servicioIds: cortes })}
         className="w-full rounded-2xl bg-laton py-4 text-base font-extrabold text-fondo disabled:opacity-40"
       >
-        {quien.clienteId ? '⏳ Anotarme' : 'Primero búscate o regístrate'}
+        {impide ? 'Ahora no puedes anotarte' : quien.clienteId ? '⏳ Anotarme' : 'Primero búscate o regístrate'}
       </button>
     </div>
   )
