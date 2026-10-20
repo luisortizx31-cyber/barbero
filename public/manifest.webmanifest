@@ -9,6 +9,7 @@
   "orientation": "any",
   "background_color": "#14110e",
   "theme_color": "#14110e",
+  "related_applications": [{ "platform": "webapp", "url": "https://luisortizx31-cyber.github.io/barbero/manifest.webmanifest" }],
   "icons": [
     { "src": "icono-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
     { "src": "icono-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
