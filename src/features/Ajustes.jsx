@@ -2,6 +2,7 @@ import { useRef, useState } from 'react'
 import { useEstado, useSesion, guardarConfig, exportarCopia, importarCopia, pesoGuardado, salir } from '../data/store'
 import { claveDia } from '../domain/hora'
 import { enlaces } from '../data/plataforma'
+import { BotonInstalar } from '../ui/Instalar'
 import { HORARIO_INICIAL, NOMBRES_DIAS } from '../domain/horario'
 
 // Ajustes del local: nombre, comisión de los barberos, tarjeta de
@@ -73,6 +74,7 @@ export default function Ajustes() {
 
   return (
     <div className="space-y-5">
+      <BotonInstalar />
       <form onSubmit={guardar} className="space-y-4">
         <Bloque titulo="Barbería">
           <Etiqueta texto="Nombre de la barbería">

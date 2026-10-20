@@ -12,6 +12,7 @@ import { FotoCorte } from '../ui/FotoCorte'
 import { ElegirBarbero } from '../ui/ElegirBarbero'
 import { ElegirCortes } from '../ui/Cobro'
 import { Hoja } from '../ui/Hoja'
+import { BotonInstalar } from '../ui/Instalar'
 
 // Página para los clientes (#/local/{id}), desde su celular y sin
 // cuenta: si está abierto, si hay sitio, qué barbero está cortando en
@@ -277,6 +278,7 @@ export default function Local() {
           💬 Escribir a la barbería
         </a>
       )}
+      <BotonInstalar />
       <p className="text-center text-xs text-tinta-suave">Toca la foto de un barbero para verla en grande. Se actualiza solo; el tiempo es aproximado.</p>
 
       {hoja === 'cita' && (

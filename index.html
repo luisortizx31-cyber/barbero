@@ -4,8 +4,36 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Barbería · Sillas</title>
-    <meta name="theme-color" content="#16130f" />
+    <meta name="theme-color" content="#14110e" />
     <meta name="description" content="Pantalla de sillas de la barbería: cuáles están ocupadas, desde qué hora, y cuándo se liberaron." />
+    <link rel="manifest" href="./manifest.webmanifest" />
+    <link rel="icon" type="image/png" href="./icono-192.png" />
+    <link rel="apple-touch-icon" href="./apple-touch-icon.png" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="Barbería" />
+    <script>
+      // La app instalada abre siempre en "./" (sin #). Para que el cliente
+      // vuelva a la página de su barbería, el barbero a la suya y el dueño
+      // a su panel, se recuerda la última dirección y, abierta como app,
+      // se vuelve ahí. Va antes que todo: la app lee el # al arrancar.
+      ;(function () {
+        try {
+          var clave = 'barberia:ruta'
+          var comoApp = window.matchMedia('(display-mode: standalone)').matches || navigator.standalone === true
+          var vacio = !location.hash || location.hash === '#' || location.hash === '#/'
+          var guardada = localStorage.getItem(clave)
+          if (comoApp && vacio && guardada && guardada !== '#/') history.replaceState(null, '', guardada)
+          var recordar = function () {
+            localStorage.setItem(clave, location.hash || '#/')
+          }
+          recordar()
+          window.addEventListener('hashchange', recordar)
+        } catch (e) {
+          // sin localStorage, la app abre en el inicio
+        }
+      })()
+    </script>
   </head>
   <body>
     <div id="root"></div>
