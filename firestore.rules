@@ -56,11 +56,13 @@ service cloud.firestore {
       // Barberos: se ven en cada silla (foto y nombre), así que su
       // lectura es pública. Se registran solos desde su enlace (sin
       // cuenta) y pueden cambiar su nombre, celular y foto; quitarlos es
-      // solo del dueño. La foto va achicada (~20 KB), con tope.
+      // solo del dueño. La foto va achicada a 30 KB como máximo (con un
+      // poco de margen acá).
       match /barberos/{id} {
         function fotoValida() {
           return !('foto' in request.resource.data) || request.resource.data.foto == null
-            || (request.resource.data.foto is string && request.resource.data.foto.size() < 150000);
+            || (resource != null && request.resource.data.foto == resource.data.get('foto', null))
+            || (request.resource.data.foto is string && request.resource.data.foto.size() <= 32000);
         }
         allow read: if true;
         allow create: if esDuenoDe(barberiaId)
