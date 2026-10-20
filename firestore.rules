@@ -96,15 +96,19 @@ service cloud.firestore {
         allow update, delete: if esDuenoDe(barberiaId);
       }
 
-      // Bloqueos: un documento por cada 15 minutos que ocupa una cita
-      // ("2026-10-20_16:30"). Sin cuenta solo se pueden CREAR: si la hora
-      // ya la tomó otro, el documento existe, pisarlo sería "update" y no
-      // se deja, así que la reserva entera falla. La hora queda bloqueada.
+      // Bloqueos: cada cita toma un carril (uno por silla) y deja un
+      // documento por cada 5 minutos que ocupa ("2026-10-20_18:05_2").
+      // Sin cuenta solo se pueden CREAR: si ese carril a esa hora ya lo
+      // tomó otro, pisarlo sería "update" y no se deja, así que la reserva
+      // entera falla. Cuando todas las sillas están tomadas, la hora queda
+      // bloqueada. Lectura pública (sin datos de nadie) para ver qué horas
+      // quedan.
       match /bloqueos/{id} {
-        allow read, update, delete: if esDuenoDe(barberiaId);
+        allow read: if true;
+        allow update, delete: if esDuenoDe(barberiaId);
         allow create: if esDuenoDe(barberiaId)
-          || (request.resource.data.id == id && request.resource.data.keys().hasOnly(['id', 'citaId'])
-              && request.resource.data.citaId is string);
+          || (request.resource.data.id == id && request.resource.data.keys().hasOnly(['id', 'citaId', 'carril'])
+              && request.resource.data.citaId is string && request.resource.data.carril is int);
       }
 
       // Fichas: lo público de cada cliente (nombre, 3 últimos números del

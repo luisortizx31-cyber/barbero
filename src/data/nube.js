@@ -22,8 +22,9 @@ export const COLECCIONES_NUBE = ['historial', 'clientes', 'citas', 'productos', 
 // Lo que ven sin cuenta (barberos, televisor, clientes): los barberos,
 // para mostrar su foto y su nombre en cada silla, y la agenda (las horas
 // ya reservadas, sin datos de nadie) para reservar citas, y las fichas
-// (nombre y 3 números del celular) para que el cliente se busque.
-export const COLECCIONES_PUBLICAS = ['barberos', 'agenda', 'fichas']
+// (nombre y 3 números del celular) para que el cliente se busque, y los
+// bloqueos (qué sillas ya están reservadas a cada hora, sin datos).
+export const COLECCIONES_PUBLICAS = ['barberos', 'agenda', 'fichas', 'bloqueos']
 // Lo que se puede escribir sin cuenta (ver firestore.rules). Sin cuenta
 // nunca se escribe nada más, aunque algo haya cambiado por dentro.
 const PRINCIPALES_PUBLICOS = ['sillas', 'espera']

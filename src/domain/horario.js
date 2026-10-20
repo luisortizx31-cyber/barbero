@@ -70,28 +70,11 @@ export function proximosDiasAbiertos(horario, n = 7, ahora = Date.now()) {
   return dias
 }
 
-// Horas en que se puede reservar una cita de `duracion` minutos el día
-// `clave`, cada 30 minutos dentro del horario, que no choquen con otras
-// citas (`agenda`, sin datos personales). Una hora ya tomada queda
-// bloqueada para todos, sea con el barbero que sea (pedido del usuario,
-// 2026-10-20). Hoy, solo horas que todavía no pasaron (+15 min).
-export function horasLibres({ clave, duracion, agenda, horario, ahora = Date.now() }) {
-  const [a, m, dd] = clave.split('-').map(Number)
-  const fecha = new Date(a, m - 1, dd)
-  const dia = diaDe(horario, fecha)
-  if (!dia.abierto) return []
-  const inicio = aMinutos(dia.desde)
-  const fin = aMinutos(dia.hasta)
-  const esHoy = clave === claveDia(ahora)
-  const minAhora = esHoy ? new Date(ahora).getHours() * 60 + new Date(ahora).getMinutes() + 15 : -1
-  const delDia = agenda.filter((x) => x.fecha === clave)
-  const libres = []
-  for (let t = inicio; t + duracion <= fin; t += 30) {
-    if (t < minAhora) continue
-    if (!delDia.some((x) => seCruzan(x.hora, x.duracion, aHora(t), duracion))) libres.push(aHora(t))
-  }
-  return libres
-}
+// Reservar a cualquier hora, al minuto (pedido del usuario, 2026-10-20:
+// "6, 6 y 1, 6 y 2", no cada media hora). Cada cita ocupa un "carril"
+// (uno por silla) en bloques de BLOQUE_MIN minutos; una hora se bloquea
+// cuando a esa hora ya están ocupadas TODAS las sillas.
+export const BLOQUE_MIN = 5
 
 // Si dos citas (hora "HH:MM" y duración en minutos) se pisan.
 export function seCruzan(horaA, duracionA, horaB, duracionB) {
@@ -100,14 +83,56 @@ export function seCruzan(horaA, duracionA, horaB, duracionB) {
   return a < b + (Number(duracionB) || DURACION_CORTE) && b < a + (Number(duracionA) || DURACION_CORTE)
 }
 
-// Los bloques de 15 minutos que ocupa una cita: "2026-10-20_16:30", ...
-// Cada uno es un documento en la nube que solo se puede CREAR (no
-// pisar) sin cuenta: si dos personas reservan la misma hora a la vez,
-// la segunda no puede (ver bloqueos en firestore.rules).
+// Los bloques que ocupa una cita: "2026-10-20_18:00", "2026-10-20_18:05"...
+// En la nube cada bloque de cada carril es un documento
+// ("2026-10-20_18:05_2") que sin cuenta solo se puede CREAR (no pisar):
+// si dos personas toman el mismo carril a la vez, la segunda no puede
+// (ver bloqueos en firestore.rules).
 export function bloquesDe(fecha, hora, duracion) {
   const inicio = aMinutos(hora)
   const fin = inicio + (Number(duracion) || DURACION_CORTE)
   const claves = []
-  for (let t = inicio - (inicio % 15); t < fin; t += 15) claves.push(`${fecha}_${aHora(t)}`)
+  for (let t = inicio - (inicio % BLOQUE_MIN); t < fin; t += BLOQUE_MIN) claves.push(`${fecha}_${aHora(t)}`)
   return claves
+}
+
+// El primer carril (1..capacidad) libre en todos los `bloques`, o null.
+// `bloqueos`: [{ id, citaId, carril }]; los de `citaId` no cuentan.
+export function carrilLibre(bloques, bloqueos, capacidad, citaId = null) {
+  const tomados = new Set(bloqueos.filter((x) => x.citaId !== citaId).map((x) => x.id))
+  for (let k = 1; k <= Math.max(1, capacidad); k++) {
+    if (bloques.every((b) => !tomados.has(`${b}_${k}`))) return k
+  }
+  return null
+}
+
+// De qué hora a qué hora se atiende el día `clave` ("HH:MM"), o null.
+export function rangoDelDia(horario, clave) {
+  const [a, m, d] = clave.split('-').map(Number)
+  const dia = diaDe(horario, new Date(a, m - 1, d))
+  return dia.abierto ? { desde: dia.desde, hasta: dia.hasta } : null
+}
+
+// ¿Se puede reservar a esa hora? { ok, motivo, carril }.
+// `soloCupo`: el dueño, que puede anotar fuera de horario o en el pasado;
+// solo se revisa que haya silla y que el barbero no tenga otra cita.
+export function revisarHora({ clave, hora, duracion, barberoId = null, barberoNombre = '', agenda, bloqueos, horario, capacidad, citaId = null, soloCupo = false, ahora = Date.now() }) {
+  if (!clave || !/^\d{1,2}:\d{2}$/.test(hora || '')) return { ok: false, motivo: 'Elige la hora.' }
+  const t = aMinutos(hora)
+  if (!soloCupo) {
+    const rango = rangoDelDia(horario, clave)
+    if (!rango) return { ok: false, motivo: 'Ese día no atendemos.' }
+    if (t < aMinutos(rango.desde) || t >= aMinutos(rango.hasta)) return { ok: false, motivo: `Ese día atendemos de ${hora12(rango.desde)} a ${hora12(rango.hasta)}` }
+    if (t + duracion > aMinutos(rango.hasta)) return { ok: false, motivo: `Tu corte dura ~${duracion} min y cerramos a las ${hora12(rango.hasta)}: elige una hora más temprano.` }
+    if (clave === claveDia(ahora)) {
+      const d = new Date(ahora)
+      if (t < d.getHours() * 60 + d.getMinutes() + 10) return { ok: false, motivo: 'Esa hora ya pasó o es muy pronto. Elige una hora más tarde.' }
+    }
+  }
+  if (barberoId && agenda.some((x) => x.id !== citaId && x.fecha === clave && x.barberoId === barberoId && seCruzan(x.hora, x.duracion, hora, duracion))) {
+    return { ok: false, motivo: `${barberoNombre || 'Ese barbero'} ya tiene una cita a esa hora. Elige otra hora u otro barbero.` }
+  }
+  const carril = carrilLibre(bloquesDe(clave, hora, duracion), bloqueos, capacidad, citaId)
+  if (!carril) return { ok: false, motivo: capacidad <= 1 ? 'A esa hora la silla ya está reservada. Elige otra hora.' : `A esa hora las ${capacidad} sillas ya están reservadas. Elige otra hora.` }
+  return { ok: true, motivo: '', carril }
 }

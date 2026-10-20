@@ -4,7 +4,7 @@ import { useAhora, formatearDuracion, formatearHora, claveDia, formatearDia } fr
 import { esperaEstimada } from '../domain/espera'
 import { linkWhatsapp, huellaCelular, digitosCelular } from '../domain/clientes'
 import { formatearMonto } from '../domain/dinero'
-import { estadoAtencion, proximosDiasAbiertos, horasLibres, duracionDeCortes, duracionDe, hora12 } from '../domain/horario'
+import { estadoAtencion, proximosDiasAbiertos, revisarHora, rangoDelDia, duracionDeCortes, duracionDe, hora12 } from '../domain/horario'
 import { FotoBarbero } from '../ui/FotoBarbero'
 import { barberoDeSilla } from '../domain/sillas'
 import { momentoCita, tolerancia } from '../domain/citas'
@@ -42,7 +42,7 @@ function useRecuerdo(clave) {
 }
 
 export default function Local() {
-  const { config, sillas, barberos, espera, historial, servicios, agenda, fichas, telefonoBarberia } = useEstado()
+  const { config, sillas, barberos, espera, historial, servicios, agenda, fichas, bloqueos, telefonoBarberia } = useEstado()
   const { barberiaId } = useSesion()
   const ahora = useAhora(15000)
   const [hoja, setHoja] = useState(null) // 'cita' | 'espera'
@@ -272,7 +272,7 @@ export default function Local() {
         <Hoja titulo="Reservar cita" onCerrar={() => setHoja(null)}>
           <ReservarCita
             barberoInicial={citaCon}
-            estado={{ config, servicios, barberos, agenda, fichas, telefonoBarberia }}
+            estado={{ config, servicios, barberos, agenda, fichas, bloqueos, capacidad: sillas.length, telefonoBarberia }}
             onReservada={(cita) => setMiCita(cita)}
             onCerrar={() => setHoja(null)}
           />
@@ -447,11 +447,10 @@ function MiFicha({ ficha, onNoSoyYo, completa = false }) {
   )
 }
 
-// `soloBuscar`: para "Ver mi tarjeta" (sin la opción de cliente nuevo).
-function QuienEres({ fichas, valor, onCambiar, onElegido, pedirCelular = true, soloBuscar = false, completa = false }) {
+// Buscarse por nombre o celular y elegirse ("Soy yo").
+function QuienEres({ fichas, valor, onCambiar, onElegido, completa = false }) {
   const { barberiaId } = useSesion()
   const [busqueda, setBusqueda] = useState('')
-  const [nuevo, setNuevo] = useState(fichas.length === 0)
   const elegido = valor.clienteId && fichas.find((f) => f.id === valor.clienteId)
 
   if (elegido) {
@@ -464,29 +463,6 @@ function QuienEres({ fichas, valor, onCambiar, onElegido, pedirCelular = true, s
           onCambiar({ clienteId: null, nombre: '', telefono: '' })
         }}
       />
-    )
-  }
-
-  if (nuevo && !soloBuscar) {
-    return (
-      <div className="space-y-2">
-        <input value={valor.nombre} onChange={(e) => onCambiar({ ...valor, nombre: e.target.value })} placeholder="Tu nombre" className={CLASE_INPUT} />
-        {pedirCelular && (
-          <input
-            type="tel"
-            inputMode="tel"
-            value={valor.telefono}
-            onChange={(e) => onCambiar({ ...valor, telefono: e.target.value })}
-            placeholder="Tu celular"
-            className={`${CLASE_INPUT} cifra`}
-          />
-        )}
-        {fichas.length > 0 && (
-          <button type="button" onClick={() => setNuevo(false)} className="text-xs text-laton underline decoration-dotted">
-            ¿Ya viniste antes? Búscate aquí
-          </button>
-        )}
-      </div>
     )
   }
 
@@ -531,22 +507,38 @@ function QuienEres({ fichas, valor, onCambiar, onElegido, pedirCelular = true, s
           ))}
         </ul>
       )}
-      {(huella || q.length >= 3) && encontrados.length === 0 && (
-        <p className="text-center text-xs text-tinta-suave">{soloBuscar ? 'No te encontramos. Pídele a la barbería que te registre.' : 'No te encontramos. Si es tu primera vez, pon tus datos 👇'}</p>
-      )}
+      {(huella || q.length >= 3) && encontrados.length === 0 && <p className="text-center text-xs text-tinta-suave">No te encontramos. Si eres nuevo, regístrate 👇</p>}
       {digitos.length > 0 && digitos.length < 9 && /^[\d\s+]+$/.test(busqueda) && <p className="text-center text-xs text-tinta-suave">Escribe tu celular completo (9 números).</p>}
-      {!soloBuscar && <button
-        type="button"
-        onClick={() => {
-          setNuevo(true)
-          // Lo que escribió en el buscador pasa a su nombre o su celular.
-          if (digitos.length === 9) onCambiar({ ...valor, telefono: digitos })
-          else if (busqueda.trim() && !/\d/.test(busqueda)) onCambiar({ ...valor, nombre: busqueda.trim() })
+    </div>
+  )
+}
+
+// Entrar (buscarse) o registrarse: para reservar cita o anotarse hay que
+// estar registrado (pedido del usuario, 2026-10-20).
+function Identificarse({ fichas, valor, onCambiar, onElegido, completa = false }) {
+  const { barberiaId } = useSesion()
+  const [registrando, setRegistrando] = useState(false)
+  if (!valor.clienteId && registrando) {
+    return (
+      <Registrarme
+        onListo={(ficha) => {
+          recordarQuien(barberiaId, ficha.id)
+          setRegistrando(false)
+          onCambiar({ clienteId: ficha.id, nombre: ficha.nombre, telefono: '' })
+          onElegido?.(ficha)
         }}
-        className="w-full rounded-xl border border-dashed border-linea py-2.5 text-sm font-bold text-tinta-suave"
-      >
-        Es mi primera vez · poner mis datos
-      </button>}
+        onYaTengo={() => setRegistrando(false)}
+      />
+    )
+  }
+  return (
+    <div className="space-y-2">
+      <QuienEres fichas={fichas} valor={valor} onCambiar={onCambiar} onElegido={onElegido} completa={completa} />
+      {!valor.clienteId && (
+        <button type="button" onClick={() => setRegistrando(true)} className="w-full rounded-2xl border-2 border-laton py-3 font-extrabold text-laton">
+          ✨ Soy nuevo · registrarme
+        </button>
+      )}
     </div>
   )
 }
@@ -596,34 +588,15 @@ function Registrarme({ onListo, onYaTengo }) {
 function MiCuenta({ fichas, onCambio, onReservar }) {
   const { barberiaId } = useSesion()
   const [quien, setQuien] = useState(() => quienRecordado(barberiaId, fichas))
-  const [registrando, setRegistrando] = useState(false)
   const cambiar = (v) => {
     setQuien(v)
     onCambio()
   }
 
-  if (!quien.clienteId && registrando) {
-    return (
-      <Registrarme
-        onListo={(ficha) => {
-          recordarQuien(barberiaId, ficha.id)
-          setRegistrando(false)
-          cambiar({ clienteId: ficha.id, nombre: ficha.nombre, telefono: '' })
-        }}
-        onYaTengo={() => setRegistrando(false)}
-      />
-    )
-  }
-
   return (
     <div className="space-y-3">
       {!quien.clienteId && <p className="text-sm text-tinta-suave">Búscate por tu nombre o tu celular para entrar a tu cuenta: tu tarjeta, tus citas y tus últimos cortes.</p>}
-      <QuienEres fichas={fichas} valor={quien} onCambiar={cambiar} soloBuscar completa />
-      {!quien.clienteId && (
-        <button type="button" onClick={() => setRegistrando(true)} className="w-full rounded-2xl border-2 border-laton py-3 font-extrabold text-laton">
-          ✨ Soy nuevo · registrarme
-        </button>
-      )}
+      <Identificarse fichas={fichas} valor={quien} onCambiar={cambiar} completa />
       {quien.clienteId && (
         <button type="button" onClick={onReservar} className="w-full rounded-2xl bg-laton py-3.5 font-extrabold text-fondo">
           📅 Reservar una cita
@@ -634,7 +607,7 @@ function MiCuenta({ fichas, onCambio, onReservar }) {
 }
 
 function ReservarCita({ estado, barberoInicial = null, onReservada, onCerrar }) {
-  const { config, servicios, barberos, agenda, fichas, telefonoBarberia } = estado
+  const { config, servicios, barberos, agenda, fichas, bloqueos, capacidad, telefonoBarberia } = estado
   const { barberiaId } = useSesion()
   const [barberoId, setBarberoId] = useState(barberoInicial)
   const [quien, setQuien] = useState(() => quienRecordado(barberiaId, fichas))
@@ -642,15 +615,18 @@ function ReservarCita({ estado, barberoInicial = null, onReservada, onCerrar }) 
   const [cortes, setCortes] = useState(() => fichas.find((f) => f.id === quien.clienteId)?.servicioIds?.filter((id) => servicios.some((x) => x.id === id)) || [])
   const dias = proximosDiasAbiertos(config.horario, 7)
   const [dia, setDia] = useState(dias[0]?.clave ?? null)
-  const [hora, setHora] = useState(null)
+  const [hora, setHora] = useState('')
   const [hecha, setHecha] = useState(null)
   const [enviando, setEnviando] = useState(false)
   const [error, setError] = useState('')
 
   const duracion = duracionDeCortes(servicios, cortes) ?? 30
-  const horas = dia ? horasLibres({ clave: dia, duracion, agenda, horario: config.horario }) : []
   const barbero = barberos.find((b) => b.id === barberoId)
-  const datosOk = quien.clienteId || (quien.nombre.trim() && digitosCelular(quien.telefono).length >= 9)
+  const rango = dia ? rangoDelDia(config.horario, dia) : null
+  const revision = hora ? revisarHora({ clave: dia, hora, duracion, barberoId, barberoNombre: barbero?.nombre, agenda, bloqueos, horario: config.horario, capacidad }) : null
+  const horaOk = Boolean(revision?.ok)
+  // Hay que estar registrado (buscarse o registrarse) para reservar.
+  const datosOk = Boolean(quien.clienteId)
 
   if (hecha) {
     const texto = `Hola ${config.nombre} 👋, reservé una cita por la página: ${formatearDia(hecha.fecha)} a las ${hora12(hecha.hora)}${barbero ? ` con ${barbero.nombre}` : ''}, a nombre de ${hecha.nombre}.`
@@ -681,31 +657,28 @@ function ReservarCita({ estado, barberoInicial = null, onReservada, onCerrar }) 
 
   return (
     <div className="space-y-5">
-      {barberos.length > 0 && (
-        <Paso n="1" titulo="¿Con quién te cortas?">
-          <ElegirBarbero
-            barberos={barberos}
-            valor={barberoId}
-            onCambiar={(id) => {
-              setBarberoId(id)
-              setHora(null)
-            }}
-          />
-        </Paso>
-      )}
-
-      <Paso n="2" titulo="¿Qué te vas a hacer?">
-        <ElegirCortes
-          servicios={servicios}
-          elegidos={cortes}
-          onCambiar={(ids) => {
-            setCortes(ids)
-            setHora(null)
+      <Paso n="1" titulo="¿Quién eres?">
+        <Identificarse
+          fichas={fichas}
+          valor={quien}
+          onCambiar={setQuien}
+          onElegido={(f) => {
+            if (!cortes.length && f.servicioIds?.length) setCortes(f.servicioIds.filter((id) => servicios.some((x) => x.id === id)))
           }}
         />
       </Paso>
 
-      <Paso n="3" titulo="¿Qué día?">
+      {barberos.length > 0 && (
+        <Paso n="2" titulo="¿Con quién te cortas?">
+          <ElegirBarbero barberos={barberos} valor={barberoId} onCambiar={setBarberoId} />
+        </Paso>
+      )}
+
+      <Paso n="3" titulo="¿Qué te vas a hacer?">
+        <ElegirCortes servicios={servicios} elegidos={cortes} onCambiar={setCortes} />
+      </Paso>
+
+      <Paso n="4" titulo="¿Qué día?">
         <div className="flex gap-2 overflow-x-auto pb-1">
           {dias.map((d) => (
             <button
@@ -713,7 +686,6 @@ function ReservarCita({ estado, barberoInicial = null, onReservada, onCerrar }) 
               type="button"
               onClick={() => {
                 setDia(d.clave)
-                setHora(null)
                 setError('')
               }}
               aria-pressed={dia === d.clave}
@@ -726,63 +698,51 @@ function ReservarCita({ estado, barberoInicial = null, onReservada, onCerrar }) 
         </div>
       </Paso>
 
-      <Paso n="4" titulo={`¿A qué hora? (dura ~${duracion} min)`}>
-        {horas.length === 0 ? (
-          <p className="rounded-xl bg-fondo px-3 py-3 text-center text-sm text-tinta-suave">Ese día ya no hay horas libres. Prueba otro día.</p>
-        ) : (
-          <div className="grid grid-cols-3 gap-2">
-            {horas.map((h) => (
-              <button
-                key={h}
-                type="button"
-                onClick={() => {
-                  setHora(h)
-                  setError('')
-                }}
-                aria-pressed={hora === h}
-                className={`cifra rounded-xl border-2 py-2 text-sm font-bold ${hora === h ? 'border-laton bg-laton text-fondo' : 'border-linea'}`}
-              >
-                {hora12(h)}
-              </button>
-            ))}
-          </div>
-        )}
-      </Paso>
-
-      <Paso n="5" titulo="¿Quién eres?">
-        <QuienEres
-          fichas={fichas}
-          valor={quien}
-          onCambiar={setQuien}
-          onElegido={(f) => {
-            if (!cortes.length && f.servicioIds?.length) setCortes(f.servicioIds.filter((id) => servicios.some((x) => x.id === id)))
+      <Paso n="5" titulo={`¿A qué hora? (dura ~${duracion} min)`}>
+        {/* Cualquier hora, al minuto (no cada media hora). */}
+        <input
+          type="time"
+          step="60"
+          value={hora}
+          min={rango?.desde}
+          max={rango?.hasta}
+          onChange={(e) => {
+            setHora(e.target.value)
+            setError('')
           }}
+          aria-label="Hora de la cita"
+          className={`${CLASE_INPUT} cifra text-center text-2xl font-extrabold`}
         />
+        {rango && <p className="mt-1 text-center text-xs text-tinta-suave">Ese día atendemos de {hora12(rango.desde)} a {hora12(rango.hasta)}</p>}
+        {revision && (
+          <p className={`mt-2 rounded-xl px-3 py-2.5 text-center text-sm font-bold ${revision.ok ? 'bg-libre-suave text-libre' : 'bg-ocupada-suave text-ocupada'}`}>
+            {revision.ok ? `✓ ${hora12(hora)} está libre` : `✕ ${revision.motivo}`}
+          </p>
+        )}
       </Paso>
 
       <p className="text-center text-xs text-tinta-suave">⌛ Se te espera máximo {tolerancia(config)} minutos después de tu hora.</p>
       {error && <p className="rounded-xl bg-ocupada-suave px-3 py-2.5 text-center text-sm font-bold text-ocupada">{error}</p>}
       <button
         type="button"
-        disabled={!hora || !datosOk || enviando}
+        disabled={!horaOk || !datosOk || enviando}
         onClick={async () => {
           setEnviando(true)
           setError('')
           try {
-            const cita = await reservarCitaWeb({ fecha: dia, hora, duracion, barberoId, servicioIds: cortes, nombre: quien.nombre, telefono: quien.telefono, clienteId: quien.clienteId })
+            const cita = await reservarCitaWeb({ fecha: dia, hora, duracion, barberoId, servicioIds: cortes, nombre: quien.nombre, telefono: quien.telefono, clienteId: quien.clienteId, carril: revision.carril })
             const recuerdo = { id: cita.id, fecha: cita.fecha, hora: cita.hora, nombre: cita.nombre, barberoNombre: barbero?.nombre || '' }
             onReservada(recuerdo)
             setHecha(recuerdo)
           } catch (err) {
             setError(err.message)
-            setHora(null)
           } finally {
             setEnviando(false)
           }
         }}
         className="w-full rounded-2xl bg-laton py-4 text-base font-extrabold text-fondo disabled:opacity-40"
       >
-        {enviando ? 'Reservando…' : hora ? `✓ Reservar ${hora12(hora)}` : 'Elige una hora'}
+        {enviando ? 'Reservando…' : !datosOk ? 'Primero búscate o regístrate' : horaOk ? `✓ Reservar ${hora12(hora)}` : 'Elige una hora libre'}
       </button>
     </div>
   )
@@ -796,11 +756,10 @@ function Anotarme({ servicios, barberos, fichas, onAnotar }) {
   return (
     <div className="space-y-5">
       <p className="text-sm text-tinta-suave">Te anotamos en la cola de hoy. Desde esta página ves tu turno y cuánto te falta.</p>
-      <QuienEres
+      <Identificarse
         fichas={fichas}
         valor={quien}
         onCambiar={setQuien}
-        pedirCelular={false}
         onElegido={(f) => {
           if (!cortes.length && f.servicioIds?.length) setCortes(f.servicioIds.filter((id) => servicios.some((x) => x.id === id)))
         }}
@@ -815,11 +774,11 @@ function Anotarme({ servicios, barberos, fichas, onAnotar }) {
       </Paso>
       <button
         type="button"
-        disabled={!quien.nombre.trim()}
+        disabled={!quien.clienteId}
         onClick={() => onAnotar({ clienteId: quien.clienteId, nombre: quien.nombre, barberoId, servicioIds: cortes })}
         className="w-full rounded-2xl bg-laton py-4 text-base font-extrabold text-fondo disabled:opacity-40"
       >
-        ⏳ Anotarme
+        {quien.clienteId ? '⏳ Anotarme' : 'Primero búscate o regístrate'}
       </button>
     </div>
   )

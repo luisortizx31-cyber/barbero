@@ -8,7 +8,7 @@ import { ElegirCliente, ElegirCortes } from '../ui/Cobro'
 import { ElegirBarbero } from '../ui/ElegirBarbero'
 import { FotoBarbero } from '../ui/FotoBarbero'
 import { FotoCorte } from '../ui/FotoCorte'
-import { duracionDeCortes, seCruzan } from '../domain/horario'
+import { duracionDeCortes, revisarHora } from '../domain/horario'
 import { ESTADOS_ACTIVOS, momentoCita, esperaHasta, tolerancia } from '../domain/citas'
 import { useAhora } from '../domain/hora'
 
@@ -168,11 +168,13 @@ function FormCita({ cita, diaInicial, sillas, servicios, clientes, barberos, onL
   const [cortes, setCortes] = useState(cita?.servicioIds || [])
   const [guardarFrecuente, setGuardarFrecuente] = useState(false)
 
-  // Otra cita activa que pisa esa hora: la hora está tomada y queda
-  // bloqueada, con cualquier barbero (pedido del usuario, 2026-10-20).
-  const { citas } = useEstado()
+  // A esa hora ya están reservadas todas las sillas, o el barbero ya
+  // tiene otra cita (pedido del usuario, 2026-10-20).
+  const { agenda, bloqueos } = useEstado()
   const duracion = duracionDeCortes(servicios, cortes) ?? 30
-  const choque = fecha && hora && citas.find((c) => c.id !== cita?.id && ESTADOS_ACTIVOS.includes(c.estado) && c.fecha === fecha && seCruzan(c.hora, c.duracion, hora, duracion))
+  const barbero = barberos.find((b) => b.id === barberoId)
+  const revision = fecha && hora ? revisarHora({ clave: fecha, hora, duracion, barberoId, barberoNombre: barbero?.nombre, agenda, bloqueos, capacidad: sillas.length, citaId: cita?.id, soloCupo: true }) : null
+  const choque = revision && !revision.ok ? revision.motivo : null
 
   function guardar() {
     let { clienteId } = cliente
@@ -239,7 +241,7 @@ function FormCita({ cita, diaInicial, sillas, servicios, clientes, barberos, onL
           </option>
         ))}
       </select>
-      {choque && <p className="rounded-xl bg-ocupada-suave px-3 py-2 text-sm text-ocupada">Esa hora ya está tomada: {choque.nombre} a las {hora12(choque.hora)}. Elige otra hora.</p>}
+      {choque && <p className="rounded-xl bg-ocupada-suave px-3 py-2 text-sm text-ocupada">{choque}</p>}
       <div>
         <p className="mb-2 text-xs font-bold uppercase tracking-wide text-tinta-suave">¿Qué corte? (opcional)</p>
         <ElegirCortes servicios={servicios} elegidos={cortes} onCambiar={setCortes} />

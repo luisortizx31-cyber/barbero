@@ -3,7 +3,7 @@ import { onAuthStateChanged, signInWithEmailAndPassword, sendPasswordResetEmail,
 import { auth } from './firebase'
 import { escucharBarberia, guardarCambios, COLECCIONES_PUBLICAS } from './nube'
 import { SUPER_UID, obtenerPerfil } from './plataforma'
-import { HORARIO_INICIAL, bloquesDe } from '../domain/horario'
+import { HORARIO_INICIAL, bloquesDe, carrilLibre } from '../domain/horario'
 import { digitosCelular, huellaCelular, fidelidad } from '../domain/clientes'
 import { claveDia } from '../domain/hora'
 
@@ -511,21 +511,31 @@ function agendaDe(citas, agendaActual = []) {
     })
 }
 
-// Bloqueos: un documento por cada 15 minutos que ocupa cada cita activa
-// (ver bloquesDe). Sin cuenta solo se pueden crear, no pisar: así una
-// hora tomada queda bloqueada aunque dos personas reserven a la vez.
-function bloqueosDe(citas, actuales = []) {
+// Bloqueos: cada cita activa toma un carril (uno por silla) y deja un
+// documento por cada bloque de 5 minutos que ocupa en ese carril (ver
+// bloquesDe). Sin cuenta solo se pueden crear, no pisar: así, cuando a
+// una hora ya están todas las sillas reservadas, nadie más la puede
+// tomar, aunque dos personas reserven a la vez. Cada cita conserva el
+// carril que ya tenía; las nuevas toman el primero libre.
+function bloqueosDe(citas, actuales = [], capacidad = 1) {
   const actual = new Map(actuales.map((x) => [x.id, x]))
-  const porClave = new Map()
-  for (const c of citas) {
-    if (!CITA_ACTIVA.includes(c.estado)) continue
-    for (const id of bloquesDe(c.fecha, c.hora, c.duracion)) {
-      if (porClave.has(id)) continue
+  const carrilDe = new Map(actuales.filter((x) => x.carril).map((x) => [x.citaId, x.carril]))
+  const activas = citas.filter((c) => CITA_ACTIVA.includes(c.estado)).sort((a, b) => Number(carrilDe.has(b.id)) - Number(carrilDe.has(a.id)))
+  const hechos = []
+  for (const c of activas) {
+    const bloques = bloquesDe(c.fecha, c.hora, c.duracion)
+    let k = carrilDe.get(c.id)
+    const tomados = new Set(hechos.map((x) => x.id))
+    if (!k || bloques.some((b) => tomados.has(`${b}_${k}`))) k = carrilLibre(bloques, hechos, capacidad)
+    // Sin carril: el dueño la anotó con todas las sillas tomadas.
+    if (!k) continue
+    for (const b of bloques) {
+      const id = `${b}_${k}`
       const viejo = actual.get(id)
-      porClave.set(id, viejo?.citaId === c.id ? viejo : { id, citaId: c.id })
+      hechos.push(viejo?.citaId === c.id && viejo.carril === k ? viejo : { id, citaId: c.id, carril: k })
     }
   }
-  return [...porClave.values()]
+  return hechos
 }
 
 // Fichas: lo público de cada cliente, para que se busque en la página de
@@ -583,7 +593,7 @@ const mismaLista = (a, b) => a.length === b.length && a.every((x, i) => x === b[
 // Si nada cambió, devuelve el mismo objeto.
 function derivados(e) {
   const agenda = agendaDe(e.citas, e.agenda)
-  const bloqueos = bloqueosDe(e.citas, e.bloqueos)
+  const bloqueos = bloqueosDe(e.citas, e.bloqueos, e.sillas.length)
   const fichas = fichasDe(e.clientes, e.historial, e.citas, e.config, e.fichas)
   if (mismaLista(agenda, e.agenda) && mismaLista(bloqueos, e.bloqueos) && mismaLista(fichas, e.fichas)) return e
   return { ...e, agenda, bloqueos, fichas }
@@ -618,7 +628,7 @@ export function eliminarCita(id) {
 // "por la web". `clienteId`: si se buscó y eligió como cliente frecuente
 // (su celular lo tiene el dueño). Si alguien tomó esa hora un momento
 // antes, la nube no deja crear los bloqueos y la reserva falla entera.
-export async function reservarCitaWeb({ fecha, hora, duracion, barberoId, servicioIds, nombre, telefono, clienteId = null }) {
+export async function reservarCitaWeb({ fecha, hora, duracion, barberoId, servicioIds, nombre, telefono, clienteId = null, carril = 1 }) {
   const cita = {
     id: nuevoId(),
     fecha,
@@ -635,7 +645,7 @@ export async function reservarCitaWeb({ fecha, hora, duracion, barberoId, servic
     creadaEn: new Date().toISOString(),
   }
   const lugar = { id: cita.id, fecha, hora, duracion: cita.duracion, barberoId: cita.barberoId, sillaId: null }
-  const bloqueos = bloquesDe(fecha, hora, cita.duracion).map((id) => ({ id, citaId: cita.id }))
+  const bloqueos = bloquesDe(fecha, hora, cita.duracion).map((b) => ({ id: `${b}_${carril}`, citaId: cita.id, carril }))
   try {
     await fijar({ ...estado, citas: [...estado.citas, cita], agenda: [...estado.agenda, lugar], bloqueos: [...estado.bloqueos, ...bloqueos] }, { avisarError: false })
   } catch (err) {
