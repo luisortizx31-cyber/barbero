@@ -596,7 +596,7 @@ function Registrarme({ onListo, onYaTengo }) {
 function MiCuenta({ fichas, onCambio, onReservar }) {
   const { barberiaId } = useSesion()
   const [quien, setQuien] = useState(() => quienRecordado(barberiaId, fichas))
-  const [registrando, setRegistrando] = useState(fichas.length === 0)
+  const [registrando, setRegistrando] = useState(false)
   const cambiar = (v) => {
     setQuien(v)
     onCambio()
@@ -610,7 +610,7 @@ function MiCuenta({ fichas, onCambio, onReservar }) {
           setRegistrando(false)
           cambiar({ clienteId: ficha.id, nombre: ficha.nombre, telefono: '' })
         }}
-        onYaTengo={fichas.length > 0 ? () => setRegistrando(false) : null}
+        onYaTengo={() => setRegistrando(false)}
       />
     )
   }
