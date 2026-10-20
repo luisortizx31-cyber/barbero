@@ -1,4 +1,4 @@
-import { useEstado } from '../data/store'
+import { useEstado, salir } from '../data/store'
 import { SECCIONES_MAS } from '../domain/secciones'
 
 // Menú "Más": lo que no se usa a cada rato.
@@ -21,6 +21,19 @@ export default function Mas({ onIr }) {
           </button>
         </li>
       ))}
+      <li>
+        <button
+          type="button"
+          onClick={() => confirm('¿Salir de la cuenta en este equipo? Los datos quedan guardados en la nube.') && salir()}
+          className="flex w-full items-center gap-4 rounded-2xl border border-linea p-4 text-left text-tinta-suave"
+        >
+          <span className="text-3xl">⏏</span>
+          <span className="min-w-0 flex-1">
+            <span className="block font-extrabold">Salir de la cuenta</span>
+            <span className="block text-sm">Para entrar con otra cuenta u otra barbería</span>
+          </span>
+        </button>
+      </li>
     </ul>
   )
 }

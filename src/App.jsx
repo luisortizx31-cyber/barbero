@@ -8,6 +8,8 @@ import Barberos from './features/Barberos'
 import { FotoBarbero } from './ui/FotoBarbero'
 import { FormBarbero } from './features/Barberos'
 import { Hoja } from './ui/Hoja'
+import { BotonSalirBarberia } from './ui/SalirBarberia'
+import { irAlInicio } from './data/inicio'
 import Pantalla from './features/Pantalla'
 import Citas from './features/Citas'
 import Clientes from './features/Clientes'
@@ -40,7 +42,7 @@ const CLAVE_PESTANA = 'barberia:pestana'
 export default function App() {
   const sesion = useSesion()
   const estado = useEstado()
-  if (sesion.error) return <Cargando texto={sesion.error} accion={sesion.modo === 'panel' && Boolean(sesion.usuario)} />
+  if (sesion.error) return <Cargando texto={sesion.error} accion={sesion.modo === 'panel' && Boolean(sesion.usuario)} alInicio={sesion.modo !== 'panel'} />
   if (sesion.modo === 'panel') {
     if (sesion.cargando && !sesion.usuario) return <Cargando texto="Abriendo…" />
     if (!sesion.usuario) return <Entrar />
@@ -87,9 +89,12 @@ function AppBarbero({ barberiaId }) {
         </button>
         <div className="min-w-0 flex-1">
           <p className="truncate font-extrabold">Hola, {yo.nombre.split(' ')[0]} ✂</p>
-          <button type="button" onClick={() => elegir(null)} className="text-xs text-tinta-suave underline decoration-dotted">
-            No soy yo
-          </button>
+          <span className="flex flex-wrap gap-x-3">
+            <button type="button" onClick={() => elegir(null)} className="text-xs text-tinta-suave underline decoration-dotted">
+              No soy yo
+            </button>
+            <BotonSalirBarberia />
+          </span>
         </div>
       </div>
       <SoloPantalla barberoYo={yo.id} />
@@ -117,11 +122,16 @@ function SoloPantalla({ soloVer, barberoYo }) {
   return (
     <main className={`mx-auto p-4 ${completa ? 'max-w-none sm:p-8' : 'max-w-6xl'}`}>
       <Pantalla pantallaCompleta={completa || soloVer} enCompleta={completa} soloVer={soloVer} conCitas={false} onPantallaCompleta={alternar} barberoYo={barberoYo} />
+      {soloVer && !completa && (
+        <p className="mt-6 text-center">
+          <BotonSalirBarberia />
+        </p>
+      )}
     </main>
   )
 }
 
-function Cargando({ texto, accion }) {
+function Cargando({ texto, accion, alInicio }) {
   return (
     <div className="flex min-h-svh flex-col items-center justify-center gap-3 p-6 text-center">
       <p className="text-5xl" aria-hidden="true">
@@ -131,6 +141,11 @@ function Cargando({ texto, accion }) {
       {accion && (
         <button type="button" onClick={() => salir()} className="rounded-xl border border-linea px-4 py-2 text-sm text-tinta-suave">
           Salir de la cuenta
+        </button>
+      )}
+      {alInicio && (
+        <button type="button" onClick={irAlInicio} className="rounded-xl border border-linea px-4 py-2 text-sm text-tinta-suave">
+          Ir al inicio
         </button>
       )}
     </div>
