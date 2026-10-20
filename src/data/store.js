@@ -303,6 +303,12 @@ export function ocuparSilla(id, { servicioIds = [], clienteId = null, nombre = '
     alert(`${barbero.nombre} ya está cortando en ${otra.nombre}. Libérala primero.`)
     return false
   }
+  // Ni un cliente en dos sillas (pedido del usuario, 2026-10-20).
+  const sentado = clienteId && estado.sillas.find((s) => s.id !== id && s.ocupadaDesde && s.clienteId === clienteId)
+  if (sentado) {
+    alert(`${nombre || 'Ese cliente'} ya se está cortando en ${sentado.nombre}. Libérala primero.`)
+    return false
+  }
   fijar({
     ...estado,
     sillas: estado.sillas.map((s) =>

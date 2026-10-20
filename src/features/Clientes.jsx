@@ -198,10 +198,11 @@ function FichaCliente({ cliente, estado, servicios, onListo }) {
         inputMode="tel"
         value={telefono}
         onChange={(e) => setTelefono(e.target.value)}
-        placeholder="Celular (para WhatsApp)"
+        placeholder="Celular (opcional · si es niño, el de su papá o mamá)"
         aria-label="Celular"
         className="cifra w-full rounded-xl border border-linea bg-fondo px-3 py-2.5 text-tinta outline-none focus-visible:border-laton"
       />
+      <p className="-mt-2 text-xs text-tinta-suave">Sin celular también se guarda (solo con su nombre). Con el celular de su papá o mamá, en la página de clientes se encuentran todos los de la familia.</p>
       <div>
         <p className="mb-2 text-xs font-bold uppercase tracking-wide text-tinta-suave">Su corte de siempre</p>
         <ElegirCortes servicios={servicios} elegidos={cortes} onCambiar={setCortes} />

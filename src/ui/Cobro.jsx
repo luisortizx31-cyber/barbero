@@ -43,7 +43,9 @@ export function ElegirCortes({ servicios, elegidos, onCambiar }) {
 
 // Nombre del cliente con sugerencias de los clientes frecuentes.
 // valor: { clienteId, nombre }
-export function ElegirCliente({ clientes, valor, onCambiar, placeholder = 'Nombre del cliente (opcional)' }) {
+// `sentadoEn(clienteId)`: la silla donde ya se está cortando (no se
+// puede elegir de nuevo), o null.
+export function ElegirCliente({ clientes, valor, onCambiar, placeholder = 'Nombre del cliente (opcional)', sentadoEn = () => null }) {
   const [abierto, setAbierto] = useState(false)
   const q = valor.nombre.trim().toLowerCase()
   const sugerencias = q && !valor.clienteId ? clientes.filter((c) => c.nombre.toLowerCase().includes(q) || (c.telefono || '').includes(q)).slice(0, 5) : []
@@ -65,22 +67,26 @@ export function ElegirCliente({ clientes, valor, onCambiar, placeholder = 'Nombr
       {valor.clienteId && <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-xs font-bold text-libre">✓ frecuente</span>}
       {abierto && sugerencias.length > 0 && (
         <ul className="absolute inset-x-0 top-full z-10 mt-1 overflow-hidden rounded-xl border border-linea bg-panel-2 shadow-xl">
-          {sugerencias.map((c) => (
-            <li key={c.id}>
-              <button
-                type="button"
-                onMouseDown={(e) => e.preventDefault()}
-                onClick={() => {
-                  onCambiar({ clienteId: c.id, nombre: c.nombre })
-                  setAbierto(false)
-                }}
-                className="flex w-full items-center justify-between px-3 py-2.5 text-left text-sm"
-              >
-                <span className="font-bold">{c.nombre}</span>
-                <span className="cifra text-xs text-tinta-suave">{c.telefono}</span>
-              </button>
-            </li>
-          ))}
+          {sugerencias.map((c) => {
+            const silla = sentadoEn(c.id)
+            return (
+              <li key={c.id}>
+                <button
+                  type="button"
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={() => {
+                    onCambiar({ clienteId: c.id, nombre: c.nombre })
+                    setAbierto(false)
+                  }}
+                  disabled={Boolean(silla)}
+                  className="flex w-full items-center justify-between px-3 py-2.5 text-left text-sm disabled:opacity-50"
+                >
+                  <span className="font-bold">{c.nombre}</span>
+                  {silla ? <span className="text-xs font-bold text-ocupada">ya está en {silla.nombre}</span> : <span className="cifra text-xs text-tinta-suave">{c.telefono}</span>}
+                </button>
+              </li>
+            )
+          })}
         </ul>
       )}
     </div>
@@ -111,9 +117,17 @@ export function HojaOcupar({ silla, sillas: sillasTodas = [], servicios, cliente
       barberoId: c.barberoId || null,
     })),
   ]
+  // Una persona no puede estar cortándose en dos sillas (pedido del
+  // usuario, 2026-10-20): el cliente frecuente por su ficha, el de paso
+  // por su nombre.
+  const otrasOcupadas = sillasTodas.filter((s) => s.id !== silla.id && s.ocupadaDesde)
+  const sentadoEn = (clienteId) => (clienteId && otrasOcupadas.find((s) => s.clienteId === clienteId)) || null
+  const mismoNombreEn = (nombre) => (nombre?.trim() && otrasOcupadas.find((s) => !s.clienteId && s.cliente && s.cliente.trim().toLowerCase() === nombre.trim().toLowerCase())) || null
+  const yaSentado = (o) => sentadoEn(o.clienteId) || mismoNombreEn(o.nombre)
   // De entrada, el primero que puede sentarse en ESTA silla (sin
   // preferencia, o que quiere al barbero de esta silla).
-  const inicial = opciones.find((o) => !o.barberoId || o.barberoId === silla.barberoFijoId) ?? opciones[0]
+  const puedenSentarse = opciones.filter((o) => !yaSentado(o))
+  const inicial = puedenSentarse.find((o) => !o.barberoId || o.barberoId === silla.barberoFijoId) ?? puedenSentarse[0]
   const [elegida, setElegida] = useState(inicial?.clave ?? null)
   // Dónde está cortando cada barbero ahora (no se puede elegir a uno que
   // ya está cortando en otra silla).
@@ -132,6 +146,7 @@ export function HojaOcupar({ silla, sillas: sillasTodas = [], servicios, cliente
   }
 
   const quien = opcion ?? cliente
+  const sentadoAqui = yaSentado(quien)
   // Con barberos registrados hay que decir quién corta: si no, la silla
   // mostraría a su barbero fijo aunque esté cortando en otra.
   const faltaBarbero = barberos.length > 0 && !barberoId
@@ -168,17 +183,22 @@ export function HojaOcupar({ silla, sillas: sillasTodas = [], servicios, cliente
         <p className="mb-2 text-xs font-bold uppercase tracking-wide text-tinta-suave">¿Quién se sienta?</p>
         {opciones.length > 0 && (
           <div className="mb-2 flex flex-wrap gap-2">
-            {opciones.map((o) => (
-              <button
-                key={o.clave}
-                type="button"
-                onClick={() => elegirOpcion(o)}
-                aria-pressed={elegida === o.clave}
-                className={`rounded-full border-2 px-3 py-1.5 text-sm font-bold ${elegida === o.clave ? 'border-laton bg-laton-suave text-tinta' : 'border-linea text-tinta-suave'}`}
-              >
-                {o.etiqueta}
-              </button>
-            ))}
+            {opciones.map((o) => {
+              const en = yaSentado(o)
+              return (
+                <button
+                  key={o.clave}
+                  type="button"
+                  onClick={() => elegirOpcion(o)}
+                  disabled={Boolean(en)}
+                  aria-pressed={elegida === o.clave}
+                  className={`rounded-full border-2 px-3 py-1.5 text-sm font-bold disabled:opacity-40 ${elegida === o.clave ? 'border-laton bg-laton-suave text-tinta' : 'border-linea text-tinta-suave'}`}
+                >
+                  {o.etiqueta}
+                  {en ? ` · ya en ${en.nombre}` : ''}
+                </button>
+              )
+            })}
             <button
               type="button"
               onClick={() => elegirOpcion(null)}
@@ -193,6 +213,7 @@ export function HojaOcupar({ silla, sillas: sillasTodas = [], servicios, cliente
           <ElegirCliente
             clientes={clientes}
             valor={cliente}
+            sentadoEn={sentadoEn}
             onCambiar={(v) => {
               setCliente(v)
               const c = v.clienteId && clientes.find((x) => x.id === v.clienteId)
@@ -200,6 +221,7 @@ export function HojaOcupar({ silla, sillas: sillasTodas = [], servicios, cliente
             }}
           />
         )}
+        {sentadoAqui && <p className="mt-2 rounded-xl bg-ocupada-suave px-3 py-2 text-center text-sm text-ocupada">{quien.nombre} ya se está cortando en {sentadoAqui.nombre}. Libera esa silla primero, o elige a otra persona.</p>}
       </div>
 
       <div>
@@ -216,7 +238,7 @@ export function HojaOcupar({ silla, sillas: sillasTodas = [], servicios, cliente
       )}
       <button
         type="button"
-        disabled={faltaBarbero}
+        disabled={faltaBarbero || Boolean(sentadoAqui)}
         onClick={() =>
           onOcupar({ servicioIds: cortes, clienteId: quien.clienteId ?? null, nombre: quien.nombre ?? '', esperaId: opcion?.esperaId ?? null, citaId: opcion?.citaId ?? null, barberoId })
         }
