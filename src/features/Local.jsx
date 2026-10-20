@@ -56,6 +56,10 @@ export default function Local() {
   const yo = yoId ? fichas.find((f) => f.id === yoId) : null
 
   const atencion = estadoAtencion(config.horario, ahora)
+  // El dueño elige en Ajustes si en esta página se puede reservar cita y
+  // anotarse en la cola (pedido del usuario, 2026-10-20). Por defecto sí.
+  const conCitas = config.citasWeb !== false
+  const conCola = config.colaWeb !== false
   const libres = sillas.filter((s) => !s.ocupadaDesde)
   const esperas = esperaEstimada(sillas, [...espera, { id: 'yo' }], historial, ahora, servicios)
   const miEspera = esperas.at(-1)
@@ -64,6 +68,7 @@ export default function Local() {
 
   // Mi lugar en la cola (si me anoté desde este celular y sigo ahí).
   const posicion = miTurno ? espera.findIndex((x) => x.id === miTurno.id) : -1
+  const puedeAnotarse = conCola && atencion.abierto && posicion < 0
   const esperasCola = esperaEstimada(sillas, espera, historial, ahora, servicios)
   // Solo si sigue en la agenda: si la barbería la canceló (o ya se
   // atendió, o no llegó), deja de salir. Las reservas de antes no
@@ -128,7 +133,7 @@ export default function Local() {
           {!atencion.abierto ? (
             <>
               <p className="text-2xl font-extrabold">Ahora estamos cerrados</p>
-              <p className="text-sm text-tinta-suave">Reserva tu cita para cuando abramos 👇</p>
+              {conCitas && <p className="text-sm text-tinta-suave">Reserva tu cita para cuando abramos 👇</p>}
             </>
           ) : libres.length && !espera.length ? (
             <>
@@ -149,23 +154,27 @@ export default function Local() {
         </div>
       )}
 
-      <div className={`grid gap-2 ${atencion.abierto && posicion < 0 ? 'grid-cols-2' : ''}`}>
-        <button
-          type="button"
-          onClick={() => {
-            setCitaCon(null)
-            setHoja('cita')
-          }}
-          className="rounded-2xl bg-laton py-3.5 font-extrabold text-fondo"
-        >
-          📅 Reservar cita
-        </button>
-        {atencion.abierto && posicion < 0 && (
+      {(conCitas || puedeAnotarse) && (
+      <div className={`grid gap-2 ${conCitas && puedeAnotarse ? 'grid-cols-2' : ''}`}>
+        {conCitas && (
+          <button
+            type="button"
+            onClick={() => {
+              setCitaCon(null)
+              setHoja('cita')
+            }}
+            className="rounded-2xl bg-laton py-3.5 font-extrabold text-fondo"
+          >
+            📅 Reservar cita
+          </button>
+        )}
+        {puedeAnotarse && (
           <button type="button" onClick={() => setHoja('espera')} className="rounded-2xl border-2 border-laton py-3.5 font-extrabold text-laton">
             ⏳ Anótame
           </button>
         )}
       </div>
+      )}
       {(yo ? (
           <button type="button" onClick={() => setHoja('tarjeta')} className="flex w-full items-center gap-3 rounded-2xl border-2 border-libre bg-libre-suave px-4 py-3 text-left">
             <span className="text-2xl">👋</span>
@@ -196,16 +205,18 @@ export default function Local() {
                   <FotoBarbero barbero={b} tam="h-20 w-20" texto="text-2xl" ampliable />
                   <p className="w-full truncate font-extrabold">{b.nombre}</p>
                   <p className={`text-xs font-bold ${silla ? 'text-ocupada' : 'text-libre'}`}>{silla ? `Cortando en ${silla.nombre}` : 'Disponible'}</p>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setCitaCon(b.id)
-                      setHoja('cita')
-                    }}
-                    className="mt-1 w-full rounded-xl border border-laton/60 py-1.5 text-xs font-bold text-laton"
-                  >
-                    📅 Reservar con {b.nombre.split(' ')[0]}
-                  </button>
+                  {conCitas && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setCitaCon(b.id)
+                        setHoja('cita')
+                      }}
+                      className="mt-1 w-full rounded-xl border border-laton/60 py-1.5 text-xs font-bold text-laton"
+                    >
+                      📅 Reservar con {b.nombre.split(' ')[0]}
+                    </button>
+                  )}
                 </li>
               )
             })}
@@ -283,7 +294,7 @@ export default function Local() {
           <MiCuenta
             fichas={fichas}
             onCambio={() => setYoVersion((n) => n + 1)}
-            onReservar={() => {
+            onReservar={!conCitas ? null : () => {
               setCitaCon(null)
               setHoja('cita')
             }}
@@ -597,7 +608,7 @@ function MiCuenta({ fichas, onCambio, onReservar }) {
     <div className="space-y-3">
       {!quien.clienteId && <p className="text-sm text-tinta-suave">Búscate por tu nombre o tu celular para entrar a tu cuenta: tu tarjeta, tus citas y tus últimos cortes.</p>}
       <Identificarse fichas={fichas} valor={quien} onCambiar={cambiar} completa />
-      {quien.clienteId && (
+      {quien.clienteId && onReservar && (
         <button type="button" onClick={onReservar} className="w-full rounded-2xl bg-laton py-3.5 font-extrabold text-fondo">
           📅 Reservar una cita
         </button>

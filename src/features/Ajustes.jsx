@@ -38,6 +38,8 @@ export default function Ajustes() {
       diasRecordatorio: Math.max(1, Math.round(Number(datos.diasRecordatorio) || 21)),
       horario,
       toleranciaCita: Math.min(120, Math.max(0, Math.round(Number(datos.toleranciaCita ?? 15)))),
+      citasWeb: datos.citasWeb !== false,
+      colaWeb: datos.colaWeb !== false,
     })
     setAviso('Guardado.')
   }
@@ -99,6 +101,32 @@ export default function Ajustes() {
               </li>
             ))}
           </ul>
+        </Bloque>
+
+        {/* Qué puede hacer el cliente desde su celular (pedido del usuario,
+            2026-10-20). */}
+        <Bloque titulo="📱 Página de clientes">
+          <p className="text-xs text-tinta-suave">Elige qué pueden hacer tus clientes desde su celular. Lo demás (si hay sitio, los barberos, los precios, su tarjeta) se sigue viendo.</p>
+          {[
+            ['citasWeb', '📅 Reservar cita', 'Los clientes eligen día y hora para cortarse.'],
+            ['colaWeb', '⏳ Anótame (la cola de espera)', 'Los clientes se anotan en la cola de hoy y ven su turno.'],
+          ].map(([clave, titulo, ayuda]) => (
+            <label key={clave} className="flex items-start gap-3 rounded-xl border border-linea bg-fondo p-3">
+              <input
+                type="checkbox"
+                checked={datos[clave] !== false}
+                onChange={(e) => {
+                  setDatos((d) => ({ ...d, [clave]: e.target.checked }))
+                  setAviso(null)
+                }}
+                className="mt-0.5 h-5 w-5 shrink-0"
+              />
+              <span>
+                <span className="block font-bold">Mostrar «{titulo}»</span>
+                <span className="block text-xs text-tinta-suave">{ayuda}</span>
+              </span>
+            </label>
+          ))}
         </Bloque>
 
         <Bloque titulo="📅 Citas">
