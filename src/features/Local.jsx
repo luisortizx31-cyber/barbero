@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { useEstado, useSesion, reservarCitaWeb, anotarEnEspera, quitarDeEspera } from '../data/store'
+import { useEstado, useSesion, reservarCitaWeb, anotarEnEspera, quitarDeEspera, registrarClienteWeb } from '../data/store'
 import { useAhora, formatearDuracion, formatearHora, claveDia, formatearDia } from '../domain/hora'
 import { esperaEstimada } from '../domain/espera'
 import { linkWhatsapp, huellaCelular, digitosCelular } from '../domain/clientes'
@@ -49,6 +49,11 @@ export default function Local() {
   const [citaCon, setCitaCon] = useState(null) // barbero elegido desde "Nuestros barberos"
   const [miTurno, setMiTurno] = useRecuerdo(`barberia:miturno:${barberiaId}`)
   const [miCita, setMiCita] = useRecuerdo(`barberia:micita:${barberiaId}`)
+  // Quién es el cliente de este celular (si ya entró a su cuenta). Se lee
+  // en cada vuelta; `yoVersion` obliga a volver a mirar al entrar o salir.
+  const [yoVersion, setYoVersion] = useState(0)
+  const yoId = quienRecordado(barberiaId, fichas, yoVersion).clienteId
+  const yo = yoId ? fichas.find((f) => f.id === yoId) : null
 
   const atencion = estadoAtencion(config.horario, ahora)
   const libres = sillas.filter((s) => !s.ocupadaDesde)
@@ -161,11 +166,22 @@ export default function Local() {
           </button>
         )}
       </div>
-      {fichas.length > 0 && (
-        <button type="button" onClick={() => setHoja('tarjeta')} className="w-full rounded-2xl border border-linea bg-panel py-3 font-bold">
-          🎁 Ver mi tarjeta y mi último corte
-        </button>
-      )}
+      {(yo ? (
+          <button type="button" onClick={() => setHoja('tarjeta')} className="flex w-full items-center gap-3 rounded-2xl border-2 border-libre bg-libre-suave px-4 py-3 text-left">
+            <span className="text-2xl">👋</span>
+            <span className="min-w-0 flex-1">
+              <span className="block truncate font-extrabold">¡Bienvenido, {yo.nombre.split(' ')[0]}!</span>
+              <span className="block text-xs text-tinta-suave">
+                {yo.tarjeta ? (yo.tarjeta.tocaGratis ? '🎁 ¡Tu próximo corte es gratis!' : `🎁 Llevas ${yo.tarjeta.sellos} de ${yo.tarjeta.meta} en tu tarjeta`) : 'Tu tarjeta y tus cortes'}
+              </span>
+            </span>
+            <span className="shrink-0 text-sm font-bold text-libre">Mi cuenta ›</span>
+          </button>
+        ) : (
+          <button type="button" onClick={() => setHoja('tarjeta')} className="w-full rounded-2xl border border-linea bg-panel py-3 font-bold">
+            👤 Entrar a mi cuenta · o registrarme si soy nuevo
+          </button>
+        ))}
 
       {/* Nuestros barberos: el cliente ve a cada uno (su foto en grande al
           tocarla) y reserva con el que prefiere. */}
@@ -263,8 +279,15 @@ export default function Local() {
         </Hoja>
       )}
       {hoja === 'tarjeta' && (
-        <Hoja titulo="Mi tarjeta" onCerrar={() => setHoja(null)}>
-          <VerMiTarjeta fichas={fichas} />
+        <Hoja titulo="Mi cuenta" onCerrar={() => setHoja(null)}>
+          <MiCuenta
+            fichas={fichas}
+            onCambio={() => setYoVersion((n) => n + 1)}
+            onReservar={() => {
+              setCitaCon(null)
+              setHoja('cita')
+            }}
+          />
         </Hoja>
       )}
       {hoja === 'espera' && (
@@ -329,19 +352,23 @@ function recordarQuien(barberiaId, id) {
   }
 }
 
-// Lo que el cliente ve de sí mismo al elegirse: sus datos, cuántas veces
-// vino, su último corte (con la foto del corte si la tiene) y su tarjeta
-// de fidelidad (pedido del usuario, 2026-10-20).
-function MiFicha({ ficha, onNoSoyYo }) {
+// Lo que el cliente ve de sí mismo al elegirse (pedido del usuario,
+// 2026-10-20): sus datos, cuántas veces vino, su último corte y su
+// tarjeta; con `completa` ("Mi cuenta"), además sus próximas citas, sus
+// últimos cortes (con la foto del corte si la tiene) y su corte de siempre.
+function MiFicha({ ficha, onNoSoyYo, completa = false }) {
   const { servicios } = useEstado()
   const t = ficha.tarjeta
-  const fotoUltimo = servicios.find((x) => x.foto && ficha.ultimoCorte?.includes(x.nombre))
+  const ultimos = (ficha.ultimos || []).slice(0, completa ? 5 : 1)
+  const fotoDe = (cortes) => servicios.find((x) => x.foto && cortes?.includes(x.nombre)) || null
+  const deSiempre = servicios.filter((x) => ficha.servicioIds?.includes(x.id))
   return (
     <div className="space-y-3 rounded-2xl border-2 border-libre bg-libre-suave p-4">
       <div className="flex items-center gap-3">
-        <span className="text-2xl">🙋</span>
+        <span className="text-2xl">👋</span>
         <span className="min-w-0 flex-1">
-          <span className="block truncate text-lg font-extrabold">{ficha.nombre}</span>
+          <span className="block truncate text-lg font-extrabold">¡Bienvenido, {ficha.nombre.split(' ')[0]}!</span>
+          <span className="block truncate text-sm font-bold">{ficha.nombre}</span>
           <span className="cifra block text-xs text-tinta-suave">
             {ficha.fin ? `Celular •••${ficha.fin} · ` : ''}
             {ficha.visitas ? `${ficha.visitas} ${ficha.visitas === 1 ? 'visita' : 'visitas'}` : 'Todavía sin visitas'}
@@ -352,17 +379,49 @@ function MiFicha({ ficha, onNoSoyYo }) {
         </button>
       </div>
 
-      {ficha.ultimaFecha && (
-        <div className="flex items-center gap-3 rounded-xl bg-fondo p-3">
-          {fotoUltimo && <FotoCorte servicio={fotoUltimo} tam="h-14 w-14" ampliable />}
-          <span className="min-w-0 flex-1">
-            <span className="block text-[11px] font-bold uppercase tracking-wide text-tinta-suave">Tu último corte</span>
-            <span className="block truncate font-bold">{ficha.ultimoCorte?.length ? ficha.ultimoCorte.join(' + ') : 'Corte'}</span>
-            <span className="block text-xs text-tinta-suave first-letter:uppercase">
-              {formatearDia(ficha.ultimaFecha)}
-              {ficha.ultimoBarbero ? ` · con ${ficha.ultimoBarbero}` : ''}
-            </span>
-          </span>
+      {completa && ficha.citas?.length > 0 && (
+        <div className="rounded-xl bg-fondo p-3">
+          <p className="mb-1.5 text-[11px] font-bold uppercase tracking-wide text-tinta-suave">📅 Tus próximas citas</p>
+          <ul className="space-y-1">
+            {ficha.citas.map((c) => (
+              <li key={c.id} className="flex items-center justify-between gap-2 text-sm">
+                <span className="font-bold first-letter:uppercase">
+                  {formatearDia(c.fecha)} · {hora12(c.hora)}
+                </span>
+                <span className={`shrink-0 text-xs font-bold ${c.confirmada ? 'text-libre' : 'text-laton'}`}>{c.confirmada ? '✓ Confirmada' : '⏳ Por confirmar'}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {ultimos.length > 0 && (
+        <div className="rounded-xl bg-fondo p-3">
+          <p className="mb-1.5 text-[11px] font-bold uppercase tracking-wide text-tinta-suave">{completa ? '✂ Tus últimos cortes' : '✂ Tu último corte'}</p>
+          <ul className="space-y-2">
+            {ultimos.map((h, i) => (
+              <li key={i} className="flex items-center gap-3">
+                <FotoCorte servicio={fotoDe(h.cortes)} tam="h-12 w-12" ampliable />
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate font-bold">
+                    {h.cortes?.length ? h.cortes.join(' + ') : 'Corte'}
+                    {h.gratis ? ' 🎁' : ''}
+                  </span>
+                  <span className="block text-xs text-tinta-suave first-letter:uppercase">
+                    {formatearDia(h.fecha)}
+                    {h.barbero ? ` · con ${h.barbero}` : ''}
+                  </span>
+                </span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {completa && deSiempre.length > 0 && (
+        <div className="rounded-xl bg-fondo p-3">
+          <p className="text-[11px] font-bold uppercase tracking-wide text-tinta-suave">💈 Tu corte de siempre</p>
+          <p className="font-bold">{deSiempre.map((x) => x.nombre).join(' + ')}</p>
         </div>
       )}
 
@@ -389,7 +448,7 @@ function MiFicha({ ficha, onNoSoyYo }) {
 }
 
 // `soloBuscar`: para "Ver mi tarjeta" (sin la opción de cliente nuevo).
-function QuienEres({ fichas, valor, onCambiar, onElegido, pedirCelular = true, soloBuscar = false }) {
+function QuienEres({ fichas, valor, onCambiar, onElegido, pedirCelular = true, soloBuscar = false, completa = false }) {
   const { barberiaId } = useSesion()
   const [busqueda, setBusqueda] = useState('')
   const [nuevo, setNuevo] = useState(fichas.length === 0)
@@ -399,6 +458,7 @@ function QuienEres({ fichas, valor, onCambiar, onElegido, pedirCelular = true, s
     return (
       <MiFicha
         ficha={elegido}
+        completa={completa}
         onNoSoyYo={() => {
           recordarQuien(barberiaId, null)
           onCambiar({ clienteId: null, nombre: '', telefono: '' })
@@ -491,13 +551,84 @@ function QuienEres({ fichas, valor, onCambiar, onElegido, pedirCelular = true, s
   )
 }
 
-function VerMiTarjeta({ fichas }) {
-  const { barberiaId } = useSesion()
-  const [quien, setQuien] = useState(() => quienRecordado(barberiaId, fichas))
+// Registro del cliente nuevo: nombre y celular (si es niño, el de su papá
+// o mamá). Queda dentro de su cuenta al terminar.
+function Registrarme({ onListo, onYaTengo }) {
+  const [nombre, setNombre] = useState('')
+  const [telefono, setTelefono] = useState('')
+  const [enviando, setEnviando] = useState(false)
+  const [error, setError] = useState('')
+  const ok = nombre.trim() && digitosCelular(telefono).length === 9
+
+  async function registrar() {
+    setEnviando(true)
+    setError('')
+    try {
+      onListo(await registrarClienteWeb({ nombre, telefono }))
+    } catch (err) {
+      setError(err.message)
+    } finally {
+      setEnviando(false)
+    }
+  }
+
   return (
     <div className="space-y-3">
-      {!quien.clienteId && <p className="text-sm text-tinta-suave">Búscate por tu nombre o tu celular para ver cuántos cortes llevas.</p>}
-      <QuienEres fichas={fichas} valor={quien} onCambiar={setQuien} soloBuscar />
+      <p className="text-sm text-tinta-suave">Regístrate una sola vez: después ves tu tarjeta, tus citas y tus cortes, y reservas más rápido.</p>
+      <input value={nombre} onChange={(e) => setNombre(e.target.value)} placeholder="Tu nombre y apellido" className={CLASE_INPUT} />
+      <input type="tel" inputMode="tel" value={telefono} onChange={(e) => setTelefono(e.target.value)} placeholder="Tu celular (9 números)" className={`${CLASE_INPUT} cifra`} />
+      <p className="text-xs text-tinta-suave">¿Es para un niño? Pon su nombre y el celular de su papá o mamá.</p>
+      {error && <p className="rounded-xl bg-ocupada-suave px-3 py-2.5 text-center text-sm font-bold text-ocupada">{error}</p>}
+      <button type="button" disabled={!ok || enviando} onClick={registrar} className="w-full rounded-2xl bg-laton py-3.5 font-extrabold text-fondo disabled:opacity-40">
+        {enviando ? 'Registrando…' : '✨ Registrarme'}
+      </button>
+      {onYaTengo && (
+        <button type="button" onClick={onYaTengo} className="w-full text-center text-sm text-laton underline decoration-dotted">
+          Ya estoy registrado · buscarme
+        </button>
+      )}
+    </div>
+  )
+}
+
+// "Mi cuenta": el cliente se busca una vez y queda dentro (este celular
+// lo recuerda) viendo su tarjeta, sus citas y sus últimos cortes.
+function MiCuenta({ fichas, onCambio, onReservar }) {
+  const { barberiaId } = useSesion()
+  const [quien, setQuien] = useState(() => quienRecordado(barberiaId, fichas))
+  const [registrando, setRegistrando] = useState(fichas.length === 0)
+  const cambiar = (v) => {
+    setQuien(v)
+    onCambio()
+  }
+
+  if (!quien.clienteId && registrando) {
+    return (
+      <Registrarme
+        onListo={(ficha) => {
+          recordarQuien(barberiaId, ficha.id)
+          setRegistrando(false)
+          cambiar({ clienteId: ficha.id, nombre: ficha.nombre, telefono: '' })
+        }}
+        onYaTengo={fichas.length > 0 ? () => setRegistrando(false) : null}
+      />
+    )
+  }
+
+  return (
+    <div className="space-y-3">
+      {!quien.clienteId && <p className="text-sm text-tinta-suave">Búscate por tu nombre o tu celular para entrar a tu cuenta: tu tarjeta, tus citas y tus últimos cortes.</p>}
+      <QuienEres fichas={fichas} valor={quien} onCambiar={cambiar} soloBuscar completa />
+      {!quien.clienteId && (
+        <button type="button" onClick={() => setRegistrando(true)} className="w-full rounded-2xl border-2 border-laton py-3 font-extrabold text-laton">
+          ✨ Soy nuevo · registrarme
+        </button>
+      )}
+      {quien.clienteId && (
+        <button type="button" onClick={onReservar} className="w-full rounded-2xl bg-laton py-3.5 font-extrabold text-fondo">
+          📅 Reservar una cita
+        </button>
+      )}
     </div>
   )
 }

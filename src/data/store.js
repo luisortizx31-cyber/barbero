@@ -451,6 +451,35 @@ export function eliminarCliente(id) {
   quitarDe('clientes', id)
 }
 
+// El cliente nuevo se registra solo desde la página de clientes (pedido
+// del usuario, 2026-10-20): queda como cliente (marcado "web") y con su
+// ficha pública, para entrar a su cuenta al toque. Si su celular ya está
+// registrado, entra con esa ficha en vez de duplicarse. Devuelve la ficha.
+export async function registrarClienteWeb({ nombre, telefono }) {
+  const huella = huellaCelular(telefono, barberiaId)
+  const existente = huella && estado.fichas.find((f) => f.huella === huella && f.nombre.trim().toLowerCase() === nombre.trim().toLowerCase())
+  if (existente) return existente
+  const cliente = {
+    id: nuevoId(),
+    nombre: nombre.trim(),
+    telefono: String(telefono || '').replace(/[^\d+]/g, ''),
+    servicioIds: [],
+    notas: '',
+    fotoCorte: null,
+    origen: 'web',
+    creadoEn: new Date().toISOString(),
+  }
+  const [ficha] = fichasDe([cliente], [], [], estado.config)
+  try {
+    await fijar({ ...estado, clientes: [...estado.clientes, cliente], fichas: [...estado.fichas, ficha] }, { avisarError: false })
+  } catch (err) {
+    estado = { ...estado, clientes: estado.clientes.filter((c) => c.id !== cliente.id), fichas: estado.fichas.filter((f) => f.id !== cliente.id) }
+    avisar()
+    throw new Error(`No se pudo registrar: ${err.message}`, { cause: err })
+  }
+  return ficha
+}
+
 // --- Citas --------------------------------------------------------------------
 // Estados: 'pendiente' (pedida, sin aceptar), 'confirmada' (aceptada,
 // con su silla), 'atendida', 'cancelada', 'no-llego' (pasó la tolerancia).
@@ -510,7 +539,7 @@ function bloqueosDe(citas, actuales = []) {
 const ordenado = (v) => (v && typeof v === 'object' && !Array.isArray(v) ? Object.fromEntries(Object.keys(v).sort().map((k) => [k, ordenado(v[k])])) : Array.isArray(v) ? v.map(ordenado) : v)
 const igualQue = (a, b) => Boolean(a) && JSON.stringify(ordenado(a)) === JSON.stringify(ordenado(b))
 
-function fichasDe(clientes, historial, config, actuales = []) {
+function fichasDe(clientes, historial, citas, config, actuales = []) {
   const actual = new Map(actuales.map((x) => [x.id, x]))
   const visitasDe = new Map()
   for (const h of historial) {
@@ -521,7 +550,7 @@ function fichasDe(clientes, historial, config, actuales = []) {
   const cada = Number(config.fidelidadCada) || 0
   return clientes.map((c) => {
     const visitas = visitasDe.get(c.id) || []
-    const ultima = visitas.reduce((u, h) => (!u || h.fin > u.fin ? h : u), null)
+    const hoy = claveDia()
     const tarjeta = fidelidad(visitas, c.id, cada)
     const nuevo = {
       id: c.id,
@@ -530,9 +559,17 @@ function fichasDe(clientes, historial, config, actuales = []) {
       huella: huellaCelular(c.telefono, barberiaId),
       servicioIds: c.servicioIds || [],
       visitas: visitas.length,
-      ultimaFecha: ultima ? claveDia(ultima.fin) : null,
-      ultimoCorte: ultima?.cobro?.servicios?.map((x) => x.nombre) || [],
-      ultimoBarbero: ultima?.barbero || '',
+      // Sus últimos 5 cortes (lo más nuevo primero) y sus próximas citas,
+      // para "Mi cuenta" en la página de clientes (pedido del usuario,
+      // 2026-10-20).
+      ultimos: [...visitas]
+        .sort((a, b) => b.fin.localeCompare(a.fin))
+        .slice(0, 5)
+        .map((h) => ({ fecha: claveDia(h.fin), cortes: h.cobro?.servicios?.map((x) => x.nombre) || [], barbero: h.barbero || '', gratis: Boolean(h.cobro?.gratis) })),
+      citas: citas
+        .filter((x) => x.clienteId === c.id && CITA_ACTIVA.includes(x.estado) && x.fecha >= hoy)
+        .sort((a, b) => `${a.fecha} ${a.hora}`.localeCompare(`${b.fecha} ${b.hora}`))
+        .map((x) => ({ id: x.id, fecha: x.fecha, hora: x.hora, confirmada: x.estado === 'confirmada' })),
       tarjeta: tarjeta || null,
     }
     const viejo = actual.get(c.id)
@@ -547,7 +584,7 @@ const mismaLista = (a, b) => a.length === b.length && a.every((x, i) => x === b[
 function derivados(e) {
   const agenda = agendaDe(e.citas, e.agenda)
   const bloqueos = bloqueosDe(e.citas, e.bloqueos)
-  const fichas = fichasDe(e.clientes, e.historial, e.config, e.fichas)
+  const fichas = fichasDe(e.clientes, e.historial, e.citas, e.config, e.fichas)
   if (mismaLista(agenda, e.agenda) && mismaLista(bloqueos, e.bloqueos) && mismaLista(fichas, e.fichas)) return e
   return { ...e, agenda, bloqueos, fichas }
 }

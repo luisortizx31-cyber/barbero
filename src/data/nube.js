@@ -27,7 +27,7 @@ export const COLECCIONES_PUBLICAS = ['barberos', 'agenda', 'fichas']
 // Lo que se puede escribir sin cuenta (ver firestore.rules). Sin cuenta
 // nunca se escribe nada más, aunque algo haya cambiado por dentro.
 const PRINCIPALES_PUBLICOS = ['sillas', 'espera']
-const COLECCIONES_ESCRIBIBLES_SIN_CUENTA = ['historial', 'barberos', 'citas', 'agenda', 'bloqueos']
+const COLECCIONES_ESCRIBIBLES_SIN_CUENTA = ['historial', 'barberos', 'citas', 'agenda', 'bloqueos', 'clientes', 'fichas']
 
 // cierres se identifican por el día
 const idDe = (coleccion, item) => (coleccion === 'cierres' ? item.dia : item.id)

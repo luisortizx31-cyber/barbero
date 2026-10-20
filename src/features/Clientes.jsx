@@ -67,7 +67,10 @@ export default function Clientes() {
             <li key={c.id} className="flex items-center gap-3 px-4 py-3">
               {c.fotoCorte && <FotoCorte servicio={{ foto: c.fotoCorte, nombre: `Corte de ${c.nombre}` }} tam="h-11 w-11" ampliable />}
               <button type="button" onClick={() => setAbierto(c)} className="min-w-0 flex-1 text-left">
-                <p className="truncate font-bold">{c.nombre}</p>
+                <p className="truncate font-bold">
+                  {c.nombre}
+                  {c.origen === 'web' && <span className="ml-1.5 rounded-full bg-panel-2 px-1.5 py-0.5 text-[10px] font-bold text-tinta-suave">📱 se registró solo</span>}
+                </p>
                 <p className="text-xs text-tinta-suave">
                   {r.visitas} {r.visitas === 1 ? 'visita' : 'visitas'}
                   {r.dias != null ? ` · última hace ${r.dias} ${r.dias === 1 ? 'día' : 'días'}` : ' · todavía no vino'}

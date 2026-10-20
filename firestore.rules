@@ -110,9 +110,26 @@ service cloud.firestore {
       // Fichas: lo público de cada cliente (nombre, 3 últimos números del
       // celular y su huella, corte de siempre) para que se busque en la
       // página de clientes. Las escribe solo el dueño, desde sus clientes.
+      // El cliente nuevo puede crear su propia ficha al registrarse (sin
+      // visitas, sin tarjeta llena); cambiarla o borrarla es del dueño.
       match /fichas/{id} {
         allow read: if true;
         allow write: if esDuenoDe(barberiaId);
+        allow create: if request.resource.data.id == id
+          && request.resource.data.keys().hasOnly(['id', 'nombre', 'fin', 'huella', 'servicioIds', 'visitas', 'ultimos', 'citas', 'tarjeta'])
+          && request.resource.data.visitas == 0 && request.resource.data.ultimos.size() == 0 && request.resource.data.citas.size() == 0
+          && request.resource.data.nombre is string && request.resource.data.nombre.size() > 0 && request.resource.data.nombre.size() <= 80;
+      }
+
+      // Clientes: el nuevo se registra solo desde la página de clientes
+      // (solo crearse, marcado "web", sin notas ni foto). Verlos y
+      // cambiarlos sigue siendo del dueño (regla de abajo).
+      match /clientes/{id} {
+        allow create: if request.resource.data.id == id && request.resource.data.origen == 'web'
+          && request.resource.data.keys().hasOnly(['id', 'nombre', 'telefono', 'servicioIds', 'notas', 'fotoCorte', 'origen', 'creadoEn'])
+          && request.resource.data.nombre is string && request.resource.data.nombre.size() > 0 && request.resource.data.nombre.size() <= 80
+          && request.resource.data.telefono is string && request.resource.data.telefono.size() <= 20
+          && request.resource.data.notas == '' && request.resource.data.fotoCorte == null && request.resource.data.servicioIds.size() == 0;
       }
 
       match /{coleccion}/{id} {
