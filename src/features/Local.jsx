@@ -334,11 +334,10 @@ function Paso({ n, titulo, children }) {
 }
 
 // ¿Quién eres? (pedido del usuario, 2026-10-20): el cliente frecuente se
-// busca por su nombre o su celular y se elige; así la cita o el turno
-// quedan a su nombre (el dueño ya tiene su celular). Si no aparece, pone
-// sus datos como cliente nuevo. Se recuerda quién es en este celular.
+// busca por su celular y se elige; así la cita o el turno quedan a su
+// nombre (el dueño ya tiene su celular). Si no aparece, se registra. Se
+// recuerda quién es en este celular.
 // valor: { clienteId, nombre, telefono }
-const sinTildes = (t) => String(t || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim()
 
 function claveYo(barberiaId) {
   return `barberia:yocliente:${barberiaId}`
@@ -458,7 +457,9 @@ function MiFicha({ ficha, onNoSoyYo, completa = false }) {
   )
 }
 
-// Buscarse por nombre o celular y elegirse ("Soy yo").
+// Buscarse por el celular y elegirse ("Soy yo"). Solo con el celular
+// completo (pedido del usuario, 2026-10-20): recién al escribir los 9
+// números aparece quién es (o los de la familia, si comparten celular).
 function QuienEres({ fichas, valor, onCambiar, onElegido, completa = false }) {
   const { barberiaId } = useSesion()
   const [busqueda, setBusqueda] = useState('')
@@ -477,26 +478,20 @@ function QuienEres({ fichas, valor, onCambiar, onElegido, completa = false }) {
     )
   }
 
-  // Con el celular completo se encuentra por su huella; con el nombre,
-  // desde 3 letras.
-  const q = sinTildes(busqueda)
   const digitos = digitosCelular(busqueda)
   const huella = digitos.length === 9 ? huellaCelular(digitos, barberiaId) : null
-  const encontrados = huella
-    ? fichas.filter((f) => f.huella === huella)
-    : /\d/.test(q) || q.length < 3
-      ? []
-      : fichas.filter((f) => sinTildes(f.nombre).includes(q)).slice(0, 6)
+  const encontrados = huella ? fichas.filter((f) => f.huella === huella) : []
 
   return (
     <div className="space-y-2">
       <input
-        type="search"
+        type="tel"
+        inputMode="numeric"
         value={busqueda}
         onChange={(e) => setBusqueda(e.target.value)}
-        placeholder="🔍 Busca tu nombre o tu celular"
-        aria-label="Busca tu nombre o tu celular"
-        className={CLASE_INPUT}
+        placeholder="📱 Escribe tu número de celular"
+        aria-label="Tu número de celular"
+        className={`${CLASE_INPUT} cifra text-center text-lg font-bold`}
       />
       {encontrados.length > 0 && (
         <ul className="divide-y divide-linea overflow-hidden rounded-xl border border-linea">
@@ -518,8 +513,8 @@ function QuienEres({ fichas, valor, onCambiar, onElegido, completa = false }) {
           ))}
         </ul>
       )}
-      {(huella || q.length >= 3) && encontrados.length === 0 && <p className="text-center text-xs text-tinta-suave">No te encontramos. Si eres nuevo, regístrate 👇</p>}
-      {digitos.length > 0 && digitos.length < 9 && /^[\d\s+]+$/.test(busqueda) && <p className="text-center text-xs text-tinta-suave">Escribe tu celular completo (9 números).</p>}
+      {huella && encontrados.length === 0 && <p className="text-center text-xs text-tinta-suave">No hay nadie registrado con ese celular. Si eres nuevo, regístrate 👇</p>}
+      {digitos.length > 0 && digitos.length < 9 && <p className="text-center text-xs text-tinta-suave">Te faltan {9 - digitos.length} {9 - digitos.length === 1 ? 'número' : 'números'}.</p>}
     </div>
   )
 }
@@ -606,7 +601,7 @@ function MiCuenta({ fichas, onCambio, onReservar }) {
 
   return (
     <div className="space-y-3">
-      {!quien.clienteId && <p className="text-sm text-tinta-suave">Búscate por tu nombre o tu celular para entrar a tu cuenta: tu tarjeta, tus citas y tus últimos cortes.</p>}
+      {!quien.clienteId && <p className="text-sm text-tinta-suave">Escribe tu celular para entrar a tu cuenta: tu tarjeta, tus citas y tus últimos cortes.</p>}
       <Identificarse fichas={fichas} valor={quien} onCambiar={cambiar} completa />
       {quien.clienteId && onReservar && (
         <button type="button" onClick={onReservar} className="w-full rounded-2xl bg-laton py-3.5 font-extrabold text-fondo">
