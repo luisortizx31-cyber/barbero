@@ -60,7 +60,11 @@ export default function Local() {
   // Mi lugar en la cola (si me anoté desde este celular y sigo ahí).
   const posicion = miTurno ? espera.findIndex((x) => x.id === miTurno.id) : -1
   const esperasCola = esperaEstimada(sillas, espera, historial, ahora, servicios)
-  const citaVigente = miCita && miCita.fecha >= claveDia() ? miCita : null
+  // Solo si sigue en la agenda: si la barbería la canceló (o ya se
+  // atendió, o no llegó), deja de salir. Las reservas de antes no
+  // guardaban el id: se buscan por día y hora.
+  const enAgenda = miCita && agenda.find((a) => (miCita.id ? a.id === miCita.id : a.fecha === miCita.fecha && a.hora === miCita.hora))
+  const citaVigente = miCita && miCita.fecha >= claveDia() && enAgenda ? { ...miCita, confirmada: enAgenda.confirmada } : null
   // Silla reservada ahora para una cita aceptada (de la agenda pública).
   const reservaDe = (s) => agenda.find((a) => a.confirmada && a.sillaId === s.id && a.fecha === claveDia() && momentoCita(a, config, ahora) === 'ahora')
   const cortandoEn = (b) => sillas.find((s) => s.ocupadaDesde && s.barberoId === b.id)
@@ -107,6 +111,7 @@ export default function Local() {
             {formatearDia(citaVigente.fecha)} · {hora12(citaVigente.hora)}
           </p>
           {citaVigente.barberoNombre && <p className="text-sm">✂ con {citaVigente.barberoNombre}</p>}
+          <p className="mt-1 text-sm font-bold">{citaVigente.confirmada ? '✓ Confirmada por la barbería' : '⏳ Esperando que la barbería la confirme'}</p>
           <p className="mt-1 text-xs font-semibold">⌛ Llega a tiempo: te esperamos máximo {tolerancia(config)} minutos.</p>
           <p className="mt-1 text-xs text-tinta-suave">Para cambiarla o cancelarla, escríbele a la barbería.</p>
         </div>
@@ -634,7 +639,7 @@ function ReservarCita({ estado, barberoInicial = null, onReservada, onCerrar }) 
           setError('')
           try {
             const cita = await reservarCitaWeb({ fecha: dia, hora, duracion, barberoId, servicioIds: cortes, nombre: quien.nombre, telefono: quien.telefono, clienteId: quien.clienteId })
-            const recuerdo = { fecha: cita.fecha, hora: cita.hora, nombre: cita.nombre, barberoNombre: barbero?.nombre || '' }
+            const recuerdo = { id: cita.id, fecha: cita.fecha, hora: cita.hora, nombre: cita.nombre, barberoNombre: barbero?.nombre || '' }
             onReservada(recuerdo)
             setHecha(recuerdo)
           } catch (err) {
