@@ -3,7 +3,9 @@ import { onAuthStateChanged, signInWithEmailAndPassword, sendPasswordResetEmail,
 import { auth } from './firebase'
 import { escucharBarberia, guardarCambios, COLECCIONES_PUBLICAS } from './nube'
 import { SUPER_UID, obtenerPerfil } from './plataforma'
-import { HORARIO_INICIAL } from '../domain/horario'
+import { HORARIO_INICIAL, bloquesDe } from '../domain/horario'
+import { digitosCelular, huellaCelular, fidelidad } from '../domain/clientes'
+import { claveDia } from '../domain/hora'
 
 // Todo lo de la barbería: el estado y las acciones que lo cambian.
 // Al principio vivía solo en este equipo (localStorage); desde el
@@ -26,7 +28,8 @@ import { HORARIO_INICIAL } from '../domain/horario'
 //                     { servicios: [{ nombre, precio }], productos: [{ id, nombre, precio, cantidad }],
 //                       monto, metodo, comisionPct, gratis }
 //              metodo: 'efectivo' | 'yape' | 'plin'; gratis: corte de la tarjeta de fidelidad
-//   clientes:  [{ id, nombre, telefono, servicioIds, notas, creadoEn }]
+//   clientes:  [{ id, nombre, telefono, servicioIds, notas, fotoCorte, creadoEn }]
+//              fotoCorte: foto de cómo le gusta su corte (data URL), o null
 //   espera:    [{ id, clienteId, nombre, servicioIds, llegada }]  la cola, en orden
 //   citas:     [{ id, fecha, hora, sillaId, clienteId, nombre, telefono, servicioIds, estado }]
 //              estado: 'pendiente' | 'atendida' | 'cancelada'
@@ -74,7 +77,7 @@ function serviciosIniciales() {
   return SERVICIOS_INICIALES.map(([nombre, precio, duracion]) => ({ id: nuevoId(), nombre, precio, duracion }))
 }
 
-const COLECCIONES = ['historial', 'clientes', 'espera', 'citas', 'productos', 'ventas', 'gastos', 'cierres', 'barberos', 'agenda']
+const COLECCIONES = ['historial', 'clientes', 'espera', 'citas', 'productos', 'ventas', 'gastos', 'cierres', 'barberos', 'agenda', 'fichas', 'bloqueos']
 
 // Completa lo que le falte a un estado guardado por una versión anterior.
 // Lo que ya está completo se deja tal cual (mismo objeto): así al guardar
@@ -118,13 +121,17 @@ let dejarDeEscuchar = null
 const oyentes = new Set()
 const avisar = () => oyentes.forEach((fn) => fn())
 
-function fijar(nuevo) {
+// Devuelve la promesa del guardado. `avisarError: false`: quien llama se
+// encarga del error (la reserva de cita, que puede perder la hora).
+function fijar(nuevo, { avisarError = true } = {}) {
   const antes = estado
-  estado = nuevo
+  // El dueño mantiene al día lo público que sale de lo privado.
+  estado = sesion.rol === 'dueno' ? derivados(nuevo) : nuevo
   avisar()
-  if (!barberiaId) return
-  guardarCambios(barberiaId, antes, nuevo, { publico: sesion.modo !== 'panel' }).catch((err) => {
+  if (!barberiaId) return Promise.resolve()
+  return guardarCambios(barberiaId, antes, estado, { publico: sesion.modo !== 'panel' }).catch((err) => {
     console.error('[store] guardar en la nube', err)
+    if (!avisarError) throw err
     alert(`No se pudo guardar: ${err.message}`)
   })
 }
@@ -146,18 +153,21 @@ function conectar(id, { completa, inicializar }) {
       }
       estado = completar({ ...estado, ...parcial })
       avisar()
+      // Un barbero cobró, o llegó una cita por la web: el dueño pone al día
+      // las fichas (visitas, tarjeta) y los bloqueos.
+      if (completa) {
+        const d = derivados(estado)
+        if (d !== estado) fijar(d)
+      }
     },
     (existe) => {
       if (existe && armado.sillas) {
         sesion = { ...sesion, cargando: false, listo: true }
         estado = completar(armado)
         avisar()
-        // Citas de antes de que existiera la agenda pública: el dueño la
-        // completa al entrar, para que esas horas no se puedan reservar.
-        if (completa) {
-          const agenda = agendaDe(estado.citas, estado.agenda)
-          if (agenda.length !== estado.agenda.length || agenda.some((x, i) => x !== estado.agenda[i])) fijar({ ...estado, agenda })
-        }
+        // Citas y clientes de antes de que existieran la agenda, los
+        // bloqueos y las fichas públicas: el dueño los completa al entrar.
+        if (completa && derivados(estado) !== estado) fijar(estado)
       } else if (inicializar) {
         // Barbería recién creada: arranca limpia. (Antes se subía lo que el
         // equipo tenía guardado de cuando todo era local, y una barbería
@@ -466,6 +476,76 @@ function agendaDe(citas, agendaActual = []) {
     })
 }
 
+// Bloqueos: un documento por cada 15 minutos que ocupa cada cita activa
+// (ver bloquesDe). Sin cuenta solo se pueden crear, no pisar: así una
+// hora tomada queda bloqueada aunque dos personas reserven a la vez.
+function bloqueosDe(citas, actuales = []) {
+  const actual = new Map(actuales.map((x) => [x.id, x]))
+  const porClave = new Map()
+  for (const c of citas) {
+    if (!CITA_ACTIVA.includes(c.estado)) continue
+    for (const id of bloquesDe(c.fecha, c.hora, c.duracion)) {
+      if (porClave.has(id)) continue
+      const viejo = actual.get(id)
+      porClave.set(id, viejo?.citaId === c.id ? viejo : { id, citaId: c.id })
+    }
+  }
+  return [...porClave.values()]
+}
+
+// Fichas: lo público de cada cliente, para que se busque en la página de
+// clientes, reserve como él mismo y vea cómo va (pedido del usuario,
+// 2026-10-20): el nombre, los 3 últimos números del celular, la huella
+// del celular (para encontrarse escribiéndolo completo), su corte de
+// siempre, cuántas veces vino, su último corte y su tarjeta. El celular
+// completo, las notas y lo que gastó no salen.
+// Comparar sin importar el orden de las claves (la nube las devuelve en
+// otro orden; si no, el dueño reescribiría las fichas sin parar).
+const ordenado = (v) => (v && typeof v === 'object' && !Array.isArray(v) ? Object.fromEntries(Object.keys(v).sort().map((k) => [k, ordenado(v[k])])) : Array.isArray(v) ? v.map(ordenado) : v)
+const igualQue = (a, b) => Boolean(a) && JSON.stringify(ordenado(a)) === JSON.stringify(ordenado(b))
+
+function fichasDe(clientes, historial, config, actuales = []) {
+  const actual = new Map(actuales.map((x) => [x.id, x]))
+  const visitasDe = new Map()
+  for (const h of historial) {
+    if (!h.clienteId) continue
+    if (!visitasDe.has(h.clienteId)) visitasDe.set(h.clienteId, [])
+    visitasDe.get(h.clienteId).push(h)
+  }
+  const cada = Number(config.fidelidadCada) || 0
+  return clientes.map((c) => {
+    const visitas = visitasDe.get(c.id) || []
+    const ultima = visitas.reduce((u, h) => (!u || h.fin > u.fin ? h : u), null)
+    const tarjeta = fidelidad(visitas, c.id, cada)
+    const nuevo = {
+      id: c.id,
+      nombre: c.nombre,
+      fin: digitosCelular(c.telefono).slice(-3),
+      huella: huellaCelular(c.telefono, barberiaId),
+      servicioIds: c.servicioIds || [],
+      visitas: visitas.length,
+      ultimaFecha: ultima ? claveDia(ultima.fin) : null,
+      ultimoCorte: ultima?.cobro?.servicios?.map((x) => x.nombre) || [],
+      ultimoBarbero: ultima?.barbero || '',
+      tarjeta: tarjeta || null,
+    }
+    const viejo = actual.get(c.id)
+    return igualQue(viejo, nuevo) ? viejo : nuevo
+  })
+}
+
+const mismaLista = (a, b) => a.length === b.length && a.every((x, i) => x === b[i])
+
+// Agenda, bloqueos y fichas rehechos desde las citas y los clientes.
+// Si nada cambió, devuelve el mismo objeto.
+function derivados(e) {
+  const agenda = agendaDe(e.citas, e.agenda)
+  const bloqueos = bloqueosDe(e.citas, e.bloqueos)
+  const fichas = fichasDe(e.clientes, e.historial, e.config, e.fichas)
+  if (mismaLista(agenda, e.agenda) && mismaLista(bloqueos, e.bloqueos) && mismaLista(fichas, e.fichas)) return e
+  return { ...e, agenda, bloqueos, fichas }
+}
+
 function conCitas(citas) {
   return { citas, agenda: agendaDe(citas, estado.agenda) }
 }
@@ -490,9 +570,12 @@ export function eliminarCita(id) {
 }
 
 // Cita reservada por el cliente desde la página de clientes (sin
-// cuenta): la cita (privada, con su celular) y su lugar en la agenda
-// (pública). El dueño la ve en Citas marcada "por la web".
-export function reservarCitaWeb({ fecha, hora, duracion, barberoId, servicioIds, nombre, telefono }) {
+// cuenta): la cita (privada, con su celular), su lugar en la agenda
+// (pública) y los bloqueos de su hora. El dueño la ve en Citas marcada
+// "por la web". `clienteId`: si se buscó y eligió como cliente frecuente
+// (su celular lo tiene el dueño). Si alguien tomó esa hora un momento
+// antes, la nube no deja crear los bloqueos y la reserva falla entera.
+export async function reservarCitaWeb({ fecha, hora, duracion, barberoId, servicioIds, nombre, telefono, clienteId = null }) {
   const cita = {
     id: nuevoId(),
     fecha,
@@ -500,7 +583,7 @@ export function reservarCitaWeb({ fecha, hora, duracion, barberoId, servicioIds,
     duracion: Number(duracion) || 30,
     barberoId: barberoId || null,
     sillaId: null,
-    clienteId: null,
+    clienteId,
     nombre: nombre.trim(),
     telefono: String(telefono || '').replace(/[^\d+]/g, ''),
     servicioIds,
@@ -509,7 +592,15 @@ export function reservarCitaWeb({ fecha, hora, duracion, barberoId, servicioIds,
     creadaEn: new Date().toISOString(),
   }
   const lugar = { id: cita.id, fecha, hora, duracion: cita.duracion, barberoId: cita.barberoId, sillaId: null }
-  fijar({ ...estado, citas: [...estado.citas, cita], agenda: [...estado.agenda, lugar] })
+  const bloqueos = bloquesDe(fecha, hora, cita.duracion).map((id) => ({ id, citaId: cita.id }))
+  try {
+    await fijar({ ...estado, citas: [...estado.citas, cita], agenda: [...estado.agenda, lugar], bloqueos: [...estado.bloqueos, ...bloqueos] }, { avisarError: false })
+  } catch (err) {
+    const otra = (x) => x.id !== cita.id && x.citaId !== cita.id
+    estado = { ...estado, citas: estado.citas.filter(otra), agenda: estado.agenda.filter(otra), bloqueos: estado.bloqueos.filter(otra) }
+    avisar()
+    throw new Error(err.code === 'permission-denied' ? 'Esa hora la acaba de tomar otra persona. Elige otra hora.' : `No se pudo reservar: ${err.message}`, { cause: err })
+  }
   return cita
 }
 

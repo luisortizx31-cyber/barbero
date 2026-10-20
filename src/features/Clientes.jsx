@@ -6,6 +6,7 @@ import { formatearMonto } from '../domain/dinero'
 import { formatearHora } from '../domain/hora'
 import { Hoja } from '../ui/Hoja'
 import { ElegirCortes } from '../ui/Cobro'
+import { FotoCorte, SubirFotoCorte } from '../ui/FotoCorte'
 
 // Los clientes frecuentes: cuántas veces vinieron, cuándo fue la última,
 // su corte de siempre, su tarjeta de fidelidad, y un toque para
@@ -64,6 +65,7 @@ export default function Clientes() {
         <ul className="divide-y divide-linea overflow-hidden rounded-2xl border border-linea bg-panel">
           {lista.map(({ c, r }) => (
             <li key={c.id} className="flex items-center gap-3 px-4 py-3">
+              {c.fotoCorte && <FotoCorte servicio={{ foto: c.fotoCorte, nombre: `Corte de ${c.nombre}` }} tam="h-11 w-11" ampliable />}
               <button type="button" onClick={() => setAbierto(c)} className="min-w-0 flex-1 text-left">
                 <p className="truncate font-bold">{c.nombre}</p>
                 <p className="text-xs text-tinta-suave">
@@ -153,11 +155,12 @@ function FichaCliente({ cliente, estado, servicios, onListo }) {
   const [telefono, setTelefono] = useState(cliente?.telefono || '')
   const [cortes, setCortes] = useState(cliente?.servicioIds || [])
   const [notas, setNotas] = useState(cliente?.notas || '')
+  const [fotoCorte, setFotoCorte] = useState(cliente?.fotoCorte || null)
   const r = cliente ? resumenCliente(estado, cliente) : null
 
   function guardar() {
     if (!nombre.trim()) return
-    guardarCliente(cliente?.id ?? null, { nombre, telefono, servicioIds: cortes, notas })
+    guardarCliente(cliente?.id ?? null, { nombre, telefono, servicioIds: cortes, notas, fotoCorte })
     onListo()
   }
 
@@ -202,6 +205,15 @@ function FichaCliente({ cliente, estado, servicios, onListo }) {
       <div>
         <p className="mb-2 text-xs font-bold uppercase tracking-wide text-tinta-suave">Su corte de siempre</p>
         <ElegirCortes servicios={servicios} elegidos={cortes} onCambiar={setCortes} />
+      </div>
+      {/* Foto de su corte (pedido del usuario, 2026-10-20): cómo le gusta,
+          para que cualquier barbero se lo haga igual. Solo la ve el dueño. */}
+      <div>
+        <p className="mb-2 text-xs font-bold uppercase tracking-wide text-tinta-suave">Foto de su corte</p>
+        <div className="flex items-center gap-3">
+          <FotoCorte servicio={{ foto: fotoCorte, nombre: `Corte de ${nombre || 'cliente'}` }} tam="h-20 w-20" ampliable />
+          <SubirFotoCorte foto={fotoCorte} onFoto={setFotoCorte} />
+        </div>
       </div>
       <textarea
         value={notas}

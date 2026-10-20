@@ -47,3 +47,18 @@ export function linkWhatsapp(telefono, mensaje) {
   const numero = d.length === 9 ? `51${d}` : d
   return `https://wa.me/${numero}?text=${encodeURIComponent(mensaje)}`
 }
+
+// Los 9 dígitos del celular (sin el 51 de adelante).
+export function digitosCelular(telefono) {
+  return String(telefono || '').replace(/\D/g, '').slice(-9)
+}
+
+// Huella del celular para la ficha pública: así el cliente se encuentra
+// escribiendo su número completo sin que el número quede a la vista.
+export function huellaCelular(telefono, barberiaId) {
+  const d = digitosCelular(telefono)
+  if (d.length < 9) return null
+  let h = 0x811c9dc5
+  for (const ch of `${barberiaId}:${d}`) h = Math.imul(h ^ ch.charCodeAt(0), 0x01000193) >>> 0
+  return h.toString(36)
+}

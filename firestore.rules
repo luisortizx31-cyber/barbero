@@ -79,7 +79,8 @@ service cloud.firestore {
         allow create: if esDuenoDe(barberiaId)
           || (request.resource.data.id == id && request.resource.data.estado == 'pendiente' && request.resource.data.origen == 'web'
               && request.resource.data.nombre is string && request.resource.data.nombre.size() > 0 && request.resource.data.nombre.size() <= 80
-              && request.resource.data.fecha is string && request.resource.data.hora is string);
+              && request.resource.data.fecha is string && request.resource.data.hora is string
+              && (request.resource.data.get('clienteId', null) == null || request.resource.data.clienteId is string));
       }
 
       // Agenda: la parte pública de las citas (día, hora, duración y
@@ -91,6 +92,25 @@ service cloud.firestore {
               && request.resource.data.keys().hasOnly(['id', 'fecha', 'hora', 'duracion', 'barberoId', 'sillaId', 'confirmada'])
               && request.resource.data.get('confirmada', false) == false);
         allow update, delete: if esDuenoDe(barberiaId);
+      }
+
+      // Bloqueos: un documento por cada 15 minutos que ocupa una cita
+      // ("2026-10-20_16:30"). Sin cuenta solo se pueden CREAR: si la hora
+      // ya la tomó otro, el documento existe, pisarlo sería "update" y no
+      // se deja, así que la reserva entera falla. La hora queda bloqueada.
+      match /bloqueos/{id} {
+        allow read, update, delete: if esDuenoDe(barberiaId);
+        allow create: if esDuenoDe(barberiaId)
+          || (request.resource.data.id == id && request.resource.data.keys().hasOnly(['id', 'citaId'])
+              && request.resource.data.citaId is string);
+      }
+
+      // Fichas: lo público de cada cliente (nombre, 3 últimos números del
+      // celular y su huella, corte de siempre) para que se busque en la
+      // página de clientes. Las escribe solo el dueño, desde sus clientes.
+      match /fichas/{id} {
+        allow read: if true;
+        allow write: if esDuenoDe(barberiaId);
       }
 
       match /{coleccion}/{id} {

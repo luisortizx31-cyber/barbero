@@ -7,7 +7,8 @@ import { Hoja } from '../ui/Hoja'
 import { ElegirCliente, ElegirCortes } from '../ui/Cobro'
 import { ElegirBarbero } from '../ui/ElegirBarbero'
 import { FotoBarbero } from '../ui/FotoBarbero'
-import { duracionDeCortes } from '../domain/horario'
+import { FotoCorte } from '../ui/FotoCorte'
+import { duracionDeCortes, seCruzan } from '../domain/horario'
 import { ESTADOS_ACTIVOS, momentoCita, esperaHasta, tolerancia } from '../domain/citas'
 import { useAhora } from '../domain/hora'
 
@@ -36,7 +37,12 @@ export default function Citas() {
   const [editando, setEditando] = useState(null) // cita | 'nueva'
   const [aceptando, setAceptando] = useState(null) // cita
   const ahora = useAhora(30000)
-  const delDia = citas.filter((c) => c.fecha === dia).sort((a, b) => a.hora.localeCompare(b.hora))
+  // Las citas web de un cliente frecuente no traen celular: es el suyo.
+  const conCelular = (c) => (c.telefono || !c.clienteId ? c : { ...c, telefono: clientes.find((x) => x.id === c.clienteId)?.telefono || '' })
+  const delDia = citas
+    .filter((c) => c.fecha === dia)
+    .sort((a, b) => a.hora.localeCompare(b.hora))
+    .map(conCelular)
   const pendientesProximas = citas.filter((c) => c.estado === 'pendiente' && c.fecha > dia).length
 
   function moverDia(delta) {
@@ -77,11 +83,13 @@ export default function Citas() {
             const wa = linkWhatsapp(c.telefono, mensajeConfirmacion(c, { config, barbero, cortes }))
             const activa = ESTADOS_ACTIVOS.includes(c.estado)
             const vencida = activa && momentoCita(c, config, ahora) === 'vencida'
+            const fotoCliente = c.clienteId && clientes.find((x) => x.id === c.clienteId)?.fotoCorte
             return (
               <li key={c.id} className={`overflow-hidden rounded-2xl border bg-panel ${vencida ? 'border-ocupada' : c.estado === 'confirmada' ? 'border-libre' : activa ? 'border-laton/60' : 'border-linea opacity-70'}`}>
                 <button type="button" onClick={() => setEditando(c)} className="flex w-full items-center gap-3 p-4 text-left">
                   <span className="cifra shrink-0 text-xl font-extrabold text-laton">{hora12(c.hora)}</span>
                   {barbero && <FotoBarbero barbero={barbero} tam="h-10 w-10" texto="text-sm" />}
+                  {fotoCliente && <FotoCorte servicio={{ foto: fotoCliente, nombre: `Corte de ${c.nombre}` }} tam="h-10 w-10" ampliable />}
                   <span className="min-w-0 flex-1">
                     <span className="block truncate font-bold">{c.nombre}</span>
                     <span className="block truncate text-xs text-tinta-suave">
@@ -92,6 +100,7 @@ export default function Citas() {
                   <span className="flex shrink-0 flex-col items-end gap-1">
                     <span className={`rounded-full px-2 py-0.5 text-[11px] font-bold ${(ESTADOS[c.estado] || ESTADOS.pendiente).clase}`}>{(ESTADOS[c.estado] || ESTADOS.pendiente).texto}</span>
                     {c.estado === 'confirmada' && silla && <span className="text-[10px] font-bold text-libre">{silla.nombre}</span>}
+                    {c.origen === 'web' && c.clienteId && <span className="text-[10px] font-bold text-libre">✓ frecuente</span>}
                     {c.origen === 'web' && <span className="rounded-full bg-panel-2 px-2 py-0.5 text-[10px] font-bold text-tinta-suave">📱 por la web</span>}
                   </span>
                 </button>
@@ -136,7 +145,7 @@ export default function Citas() {
 
       {aceptando && (
         <Hoja titulo={`Aceptar la cita de ${aceptando.nombre}`} subtitulo={`${formatearDia(aceptando.fecha)} · ${hora12(aceptando.hora)}`} onCerrar={() => setAceptando(null)}>
-          <AceptarCita cita={aceptando} sillas={sillas} barberos={barberos} servicios={servicios} config={config} onListo={() => setAceptando(null)} />
+          <AceptarCita cita={conCelular(aceptando)} sillas={sillas} barberos={barberos} servicios={servicios} config={config} onListo={() => setAceptando(null)} />
         </Hoja>
       )}
 
@@ -159,9 +168,11 @@ function FormCita({ cita, diaInicial, sillas, servicios, clientes, barberos, onL
   const [cortes, setCortes] = useState(cita?.servicioIds || [])
   const [guardarFrecuente, setGuardarFrecuente] = useState(false)
 
-  // Otra cita pendiente a la misma hora en la misma silla.
+  // Otra cita activa que pisa esa hora: la hora está tomada y queda
+  // bloqueada, con cualquier barbero (pedido del usuario, 2026-10-20).
   const { citas } = useEstado()
-  const choque = sillaId && citas.find((c) => c.id !== cita?.id && c.estado === 'pendiente' && c.fecha === fecha && c.hora === hora && c.sillaId === sillaId)
+  const duracion = duracionDeCortes(servicios, cortes) ?? 30
+  const choque = fecha && hora && citas.find((c) => c.id !== cita?.id && ESTADOS_ACTIVOS.includes(c.estado) && c.fecha === fecha && seCruzan(c.hora, c.duracion, hora, duracion))
 
   function guardar() {
     let { clienteId } = cliente
@@ -171,7 +182,7 @@ function FormCita({ cita, diaInicial, sillas, servicios, clientes, barberos, onL
       hora,
       sillaId: sillaId || null,
       barberoId: barberoId || null,
-      duracion: duracionDeCortes(servicios, cortes) ?? 30,
+      duracion,
       clienteId,
       nombre: cliente.nombre.trim() || 'Cliente',
       telefono,
@@ -228,12 +239,12 @@ function FormCita({ cita, diaInicial, sillas, servicios, clientes, barberos, onL
           </option>
         ))}
       </select>
-      {choque && <p className="rounded-xl bg-ocupada-suave px-3 py-2 text-sm text-ocupada">Ya hay una cita a esa hora en esa silla ({choque.nombre}).</p>}
+      {choque && <p className="rounded-xl bg-ocupada-suave px-3 py-2 text-sm text-ocupada">Esa hora ya está tomada: {choque.nombre} a las {hora12(choque.hora)}. Elige otra hora.</p>}
       <div>
         <p className="mb-2 text-xs font-bold uppercase tracking-wide text-tinta-suave">¿Qué corte? (opcional)</p>
         <ElegirCortes servicios={servicios} elegidos={cortes} onCambiar={setCortes} />
       </div>
-      <button type="button" onClick={guardar} disabled={!cliente.nombre.trim() || !fecha || !hora} className="w-full rounded-2xl bg-laton py-4 text-base font-extrabold text-fondo disabled:opacity-40">
+      <button type="button" onClick={guardar} disabled={!cliente.nombre.trim() || !fecha || !hora || Boolean(choque)} className="w-full rounded-2xl bg-laton py-4 text-base font-extrabold text-fondo disabled:opacity-40">
         Guardar cita
       </button>
       {cita && (

@@ -72,10 +72,10 @@ export function proximosDiasAbiertos(horario, n = 7, ahora = Date.now()) {
 
 // Horas en que se puede reservar una cita de `duracion` minutos el día
 // `clave`, cada 30 minutos dentro del horario, que no choquen con otras
-// citas (`agenda`, sin datos personales). Con barbero elegido, no debe
-// chocar con las suyas; con "cualquiera", basta con que no estén todos
-// ocupados a la vez. Hoy, solo horas que todavía no pasaron (+15 min).
-export function horasLibres({ clave, duracion, barberoId, agenda, horario, capacidad, ahora = Date.now() }) {
+// citas (`agenda`, sin datos personales). Una hora ya tomada queda
+// bloqueada para todos, sea con el barbero que sea (pedido del usuario,
+// 2026-10-20). Hoy, solo horas que todavía no pasaron (+15 min).
+export function horasLibres({ clave, duracion, agenda, horario, ahora = Date.now() }) {
   const [a, m, dd] = clave.split('-').map(Number)
   const fecha = new Date(a, m - 1, dd)
   const dia = diaDe(horario, fecha)
@@ -88,12 +88,26 @@ export function horasLibres({ clave, duracion, barberoId, agenda, horario, capac
   const libres = []
   for (let t = inicio; t + duracion <= fin; t += 30) {
     if (t < minAhora) continue
-    const choques = delDia.filter((x) => {
-      const xi = aMinutos(x.hora)
-      return xi < t + duracion && t < xi + (Number(x.duracion) || DURACION_CORTE)
-    })
-    const ocupado = barberoId ? choques.some((x) => x.barberoId === barberoId) : choques.length >= Math.max(1, capacidad)
-    if (!ocupado) libres.push(aHora(t))
+    if (!delDia.some((x) => seCruzan(x.hora, x.duracion, aHora(t), duracion))) libres.push(aHora(t))
   }
   return libres
+}
+
+// Si dos citas (hora "HH:MM" y duración en minutos) se pisan.
+export function seCruzan(horaA, duracionA, horaB, duracionB) {
+  const a = aMinutos(horaA)
+  const b = aMinutos(horaB)
+  return a < b + (Number(duracionB) || DURACION_CORTE) && b < a + (Number(duracionA) || DURACION_CORTE)
+}
+
+// Los bloques de 15 minutos que ocupa una cita: "2026-10-20_16:30", ...
+// Cada uno es un documento en la nube que solo se puede CREAR (no
+// pisar) sin cuenta: si dos personas reservan la misma hora a la vez,
+// la segunda no puede (ver bloqueos en firestore.rules).
+export function bloquesDe(fecha, hora, duracion) {
+  const inicio = aMinutos(hora)
+  const fin = inicio + (Number(duracion) || DURACION_CORTE)
+  const claves = []
+  for (let t = inicio - (inicio % 15); t < fin; t += 15) claves.push(`${fecha}_${aHora(t)}`)
+  return claves
 }

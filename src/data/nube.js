@@ -18,15 +18,16 @@ import { db } from './firebase'
 // escribe solo lo que cambió.
 
 export const CAMPOS_PRINCIPALES = ['config', 'servicios', 'sillas', 'espera']
-export const COLECCIONES_NUBE = ['historial', 'clientes', 'citas', 'productos', 'ventas', 'gastos', 'cierres', 'barberos', 'agenda']
+export const COLECCIONES_NUBE = ['historial', 'clientes', 'citas', 'productos', 'ventas', 'gastos', 'cierres', 'barberos', 'agenda', 'fichas', 'bloqueos']
 // Lo que ven sin cuenta (barberos, televisor, clientes): los barberos,
 // para mostrar su foto y su nombre en cada silla, y la agenda (las horas
-// ya reservadas, sin datos de nadie) para reservar citas.
-export const COLECCIONES_PUBLICAS = ['barberos', 'agenda']
+// ya reservadas, sin datos de nadie) para reservar citas, y las fichas
+// (nombre y 3 números del celular) para que el cliente se busque.
+export const COLECCIONES_PUBLICAS = ['barberos', 'agenda', 'fichas']
 // Lo que se puede escribir sin cuenta (ver firestore.rules). Sin cuenta
 // nunca se escribe nada más, aunque algo haya cambiado por dentro.
 const PRINCIPALES_PUBLICOS = ['sillas', 'espera']
-const COLECCIONES_ESCRIBIBLES_SIN_CUENTA = ['historial', 'barberos', 'citas', 'agenda']
+const COLECCIONES_ESCRIBIBLES_SIN_CUENTA = ['historial', 'barberos', 'citas', 'agenda', 'bloqueos']
 
 // cierres se identifican por el día
 const idDe = (coleccion, item) => (coleccion === 'cierres' ? item.dia : item.id)
