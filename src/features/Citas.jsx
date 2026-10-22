@@ -6,6 +6,7 @@ import { formatearMonto } from '../domain/dinero'
 import { Hoja } from '../ui/Hoja'
 import { ElegirCliente, ElegirCortes, HojaOcupar } from '../ui/Cobro'
 import { ElegirBarbero } from '../ui/ElegirBarbero'
+import { ElegirHora } from '../ui/ElegirHora'
 import { FotoBarbero } from '../ui/FotoBarbero'
 import { FotoCorte } from '../ui/FotoCorte'
 import { duracionDeCortes, revisarHora } from '../domain/horario'
@@ -424,9 +425,9 @@ function FormCita({ cita, diaInicial, sillas, servicios, clientes, barberos, onL
 
   return (
     <div className="space-y-4">
-      <div className="grid grid-cols-2 gap-2">
-        <input type="date" value={fecha} min={cita ? undefined : hoy} onChange={(e) => setFecha(e.target.value)} aria-label="Fecha" className="rounded-xl border border-linea bg-fondo px-3 py-2.5 text-tinta outline-none focus-visible:border-laton" />
-        <input type="time" value={hora} min={fecha === hoy && !cita ? ahoraHHMM : undefined} onChange={(e) => setHora(e.target.value)} aria-label="Hora" className="rounded-xl border border-linea bg-fondo px-3 py-2.5 text-tinta outline-none focus-visible:border-laton" />
+      <div className="space-y-2">
+        <input type="date" value={fecha} min={cita ? undefined : hoy} onChange={(e) => setFecha(e.target.value)} aria-label="Fecha" className="w-full rounded-xl border border-linea bg-fondo px-3 py-2.5 text-tinta outline-none focus-visible:border-laton" />
+        <ElegirHora value={hora} onChange={setHora} etiqueta="Hora de la cita" />
       </div>
       <ElegirCliente
         clientes={clientes}

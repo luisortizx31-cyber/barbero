@@ -10,6 +10,7 @@ import { barberoDeSilla } from '../domain/sillas'
 import { momentoCita, tolerancia } from '../domain/citas'
 import { FotoCorte } from '../ui/FotoCorte'
 import { ElegirBarbero } from '../ui/ElegirBarbero'
+import { ElegirHora } from '../ui/ElegirHora'
 import { ElegirCortes } from '../ui/Cobro'
 import { Hoja } from '../ui/Hoja'
 import { BotonInstalar } from '../ui/Instalar'
@@ -726,18 +727,13 @@ function ReservarCita({ estado, barberoInicial = null, onReservada, onCerrar }) 
 
       <Paso n="5" titulo={`¿A qué hora? (dura ~${duracion} min)`}>
         {/* Cualquier hora, al minuto (no cada media hora). */}
-        <input
-          type="time"
-          step="60"
+        <ElegirHora
           value={hora}
-          min={rango?.desde}
-          max={rango?.hasta}
-          onChange={(e) => {
-            setHora(e.target.value)
+          onChange={(h) => {
+            setHora(h)
             setError('')
           }}
-          aria-label="Hora de la cita"
-          className={`${CLASE_INPUT} cifra text-center text-2xl font-extrabold`}
+          etiqueta="Hora de la cita"
         />
         {rango && <p className="mt-1 text-center text-xs text-tinta-suave">Ese día atendemos de {hora12(rango.desde)} a {hora12(rango.hasta)}</p>}
         {revision && (

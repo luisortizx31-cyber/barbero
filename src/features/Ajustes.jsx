@@ -3,6 +3,7 @@ import { useEstado, useSesion, guardarConfig, exportarCopia, importarCopia, peso
 import { claveDia } from '../domain/hora'
 import { enlaces } from '../data/plataforma'
 import { BotonInstalar } from '../ui/Instalar'
+import { ElegirHora } from '../ui/ElegirHora'
 import { TEMAS, TEMA_INICIAL } from '../domain/temas'
 import { HORARIO_INICIAL, NOMBRES_DIAS } from '../domain/horario'
 
@@ -88,19 +89,23 @@ export default function Ajustes() {
           <p className="text-xs text-tinta-suave">Sale en la página de clientes ("Abierto · cierra 9:00 p. m.") y solo se pueden reservar citas en estas horas.</p>
           <ul className="space-y-2">
             {[1, 2, 3, 4, 5, 6, 0].map((d) => (
-              <li key={d} className="flex items-center gap-2">
-                <label className="flex w-28 shrink-0 items-center gap-2 text-sm">
+              <li key={d} className="rounded-xl border border-linea bg-fondo p-2.5">
+                <label className="flex items-center gap-2 text-sm">
                   <input type="checkbox" checked={horario[d].abierto} onChange={(e) => cambiarDia(d, { abierto: e.target.checked })} className="h-4 w-4" />
                   <span className={horario[d].abierto ? 'font-bold' : 'text-tinta-suave'}>{NOMBRES_DIAS[d]}</span>
+                  {!horario[d].abierto && <span className="ml-auto text-xs text-tinta-suave">Cerrado</span>}
                 </label>
-                {horario[d].abierto ? (
-                  <div className="flex min-w-0 flex-1 items-center gap-1">
-                    <input type="time" value={horario[d].desde} onChange={(e) => cambiarDia(d, { desde: e.target.value })} aria-label={`${NOMBRES_DIAS[d]} desde`} className="min-w-0 flex-1 rounded-lg border border-linea bg-fondo px-2 py-1.5 text-sm text-tinta" />
-                    <span className="text-tinta-suave">a</span>
-                    <input type="time" value={horario[d].hasta} onChange={(e) => cambiarDia(d, { hasta: e.target.value })} aria-label={`${NOMBRES_DIAS[d]} hasta`} className="min-w-0 flex-1 rounded-lg border border-linea bg-fondo px-2 py-1.5 text-sm text-tinta" />
+                {horario[d].abierto && (
+                  <div className="mt-2 space-y-1.5">
+                    <div className="flex items-center gap-2">
+                      <span className="w-12 shrink-0 text-xs font-bold text-tinta-suave">Abre</span>
+                      <ElegirHora chico value={horario[d].desde} onChange={(h) => cambiarDia(d, { desde: h })} etiqueta={`${NOMBRES_DIAS[d]} abre`} />
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="w-12 shrink-0 text-xs font-bold text-tinta-suave">Cierra</span>
+                      <ElegirHora chico value={horario[d].hasta} onChange={(h) => cambiarDia(d, { hasta: h })} etiqueta={`${NOMBRES_DIAS[d]} cierra`} />
+                    </div>
                   </div>
-                ) : (
-                  <span className="text-sm text-tinta-suave">Cerrado</span>
                 )}
               </li>
             ))}
