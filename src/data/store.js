@@ -676,6 +676,22 @@ export function aceptarCita(id, sillaId) {
   fijar({ ...estado, ...conCitas(estado.citas.map((c) => (c.id === id ? { ...c, estado: 'confirmada', sillaId: sillaId || c.sillaId || null } : c))) })
 }
 
+// A la hora que pidió no hay sitio: se le da otra (pedido del usuario,
+// 2026-10-22) y queda aceptada en esa silla. Se recuerda la hora que
+// había pedido, para mostrarlo y para el mensaje al cliente.
+export function cambiarHoraCita(id, { fecha, hora, sillaId }) {
+  fijar({
+    ...estado,
+    ...conCitas(
+      estado.citas.map((c) =>
+        c.id === id
+          ? { ...c, fecha, hora, sillaId: sillaId || null, estado: 'confirmada', fechaPedida: c.fechaPedida || c.fecha, horaPedida: c.horaPedida || c.hora }
+          : c
+      )
+    ),
+  })
+}
+
 export function eliminarCita(id) {
   fijar({ ...estado, ...conCitas(estado.citas.filter((c) => c.id !== id)) })
 }

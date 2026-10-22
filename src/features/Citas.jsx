@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { useEstado, guardarCita, cambiarEstadoCita, cancelarCita, eliminarCita, guardarCliente, aceptarCita, ocuparSilla, unirCitaConSilla } from '../data/store'
+import { useEstado, guardarCita, cambiarEstadoCita, cancelarCita, eliminarCita, guardarCliente, aceptarCita, ocuparSilla, unirCitaConSilla, cambiarHoraCita } from '../data/store'
 import { claveDia, formatearDia, formatearHora } from '../domain/hora'
 import { linkWhatsapp } from '../domain/clientes'
 import { formatearMonto } from '../domain/dinero'
@@ -51,6 +51,7 @@ export default function Citas() {
   const [aceptando, setAceptando] = useState(null) // cita
   const [cancelando, setCancelando] = useState(null) // cita
   const [sentando, setSentando] = useState(null) // cita que llegó
+  const [moviendo, setMoviendo] = useState(null) // cita a la que se le da otra hora
   const [aviso, setAviso] = useState(null)
   const ahora = useAhora(30000)
   const hoy = claveDia()
@@ -81,6 +82,7 @@ export default function Citas() {
       ahora={ahora}
       onEditar={() => setEditando(c)}
       onAceptar={() => setAceptando(c)}
+      onOtraHora={() => setMoviendo(c)}
       onCancelar={() => setCancelando(c)}
       onLlego={() => {
         if (!sillaParaCita(c, sillas)) return alert('No hay ninguna silla libre ahora. Cobra o libera una y vuelve a tocar «Llegó».')
@@ -148,6 +150,19 @@ export default function Citas() {
         </Hoja>
       )}
 
+      {moviendo && (
+        <Hoja titulo={`Otra hora para ${moviendo.nombre}`} subtitulo={`Pidió ${formatearDia(moviendo.fecha)} · ${hora12(moviendo.hora)}`} onCerrar={() => setMoviendo(null)}>
+          <OtraHora
+            cita={conCelular(moviendo)}
+            estado={estado}
+            onListo={(hora) => {
+              setMoviendo(null)
+              setAviso(`🕐 La cita de ${moviendo.nombre} quedó a las ${hora12(hora)}.`)
+            }}
+          />
+        </Hoja>
+      )}
+
       {cancelando && (
         <Hoja
           titulo={cancelando.estado === 'pendiente' ? `Rechazar la cita de ${cancelando.nombre}` : `Cancelar la cita de ${cancelando.nombre}`}
@@ -197,7 +212,7 @@ export default function Citas() {
 }
 
 // Una cita, con lo que se puede hacer según cómo está.
-function FilaCita({ cita: c, conFecha, estado, ahora, onEditar, onAceptar, onCancelar, onLlego, onNoLlego, onEliminar }) {
+function FilaCita({ cita: c, conFecha, estado, ahora, onEditar, onAceptar, onOtraHora, onCancelar, onLlego, onNoLlego, onEliminar }) {
   const { sillas, servicios, clientes, config, barberos, historial } = estado
   const silla = sillas.find((s) => s.id === c.sillaId)
   const barbero = barberos.find((b) => b.id === c.barberoId)
@@ -233,6 +248,9 @@ function FilaCita({ cita: c, conFecha, estado, ahora, onEditar, onAceptar, onCan
             {cortes.length ? ` · ${cortes.map((x) => x.nombre).join(' + ')} · ${formatearMonto(cortes.reduce((t, x) => t + x.precio, 0))}` : ''}
           </span>
           {conFecha && <span className="block text-[11px] text-tinta-suave first-letter:uppercase">{formatearDia(c.fecha)}</span>}
+          {c.horaPedida && (c.horaPedida !== c.hora || c.fechaPedida !== c.fecha) && (
+            <span className="block text-[11px] font-semibold text-laton">🕐 Había pedido {c.fechaPedida !== c.fecha ? `${formatearDia(c.fechaPedida)} ` : ''}{hora12(c.horaPedida)}</span>
+          )}
         </span>
         <span className="flex shrink-0 flex-col items-end gap-1">
           <span className={`rounded-full px-2 py-0.5 text-[11px] font-bold ${info.clase}`}>{info.texto}</span>
@@ -276,9 +294,12 @@ function FilaCita({ cita: c, conFecha, estado, ahora, onEditar, onAceptar, onCan
 
       {/* Por aceptar */}
       {c.estado === 'pendiente' && !vencida && !sentadoSinCita && (
-        <div className="grid grid-cols-2 divide-x divide-linea border-t border-linea text-sm font-bold">
+        <div className="grid grid-cols-3 divide-x divide-linea border-t border-linea text-sm font-bold">
           <button type="button" onClick={onAceptar} className="py-3 text-libre">
             ✓ Aceptar
+          </button>
+          <button type="button" onClick={onOtraHora} className="py-3 text-laton">
+            🕐 Otra hora
           </button>
           <button type="button" onClick={onCancelar} className="py-3 text-ocupada">
             ✕ Rechazar
@@ -313,6 +334,11 @@ function FilaCita({ cita: c, conFecha, estado, ahora, onEditar, onAceptar, onCan
       )}
 
       <div className="flex justify-end gap-1 border-t border-linea px-3 py-1">
+        {c.estado === 'confirmada' && (
+          <button type="button" onClick={onOtraHora} className="rounded-lg px-2 py-1 text-[11px] font-semibold text-tinta-suave hover:text-laton">
+            🕐 Cambiar hora
+          </button>
+        )}
         <button type="button" onClick={onEditar} className="rounded-lg px-2 py-1 text-[11px] font-semibold text-tinta-suave hover:text-laton">
           {activa ? '✏ Editar' : '📋 Ver detalle'}
         </button>
@@ -563,6 +589,134 @@ function AceptarCita({ cita, citas, sillas, barberos, servicios, config, onListo
       <button type="button" onClick={aceptar} disabled={!sillaId} className={`w-full rounded-2xl py-3.5 font-extrabold disabled:opacity-40 ${wa ? 'border border-linea text-tinta-suave' : 'bg-libre text-white'}`}>
         ✓ Aceptar{wa ? ' sin avisar' : ''}
       </button>
+    </div>
+  )
+}
+
+// Darle otra hora a una cita (pedido del usuario, 2026-10-22: "que la
+// cita que pidió pueda ser cambiada por otra hora y avisarle al cliente
+// que no hay para esa hora pero sí para la siguiente"). Se proponen las
+// próximas horas libres ese día (o se pone otra), se elige la silla y se
+// le avisa por WhatsApp. Queda aceptada a la hora nueva.
+const aMin = (hhmm) => {
+  const [h, m] = hhmm.split(':').map(Number)
+  return h * 60 + m
+}
+const aHHMM = (min) => `${String(Math.floor(min / 60)).padStart(2, '0')}:${String(min % 60).padStart(2, '0')}`
+
+function OtraHora({ cita, estado, onListo }) {
+  const { config, sillas, barberos, servicios, agenda, bloqueos, citas } = estado
+  const hoy = claveDia()
+  const [fecha, setFecha] = useState(cita.fecha < hoy ? hoy : cita.fecha)
+  const [hora, setHora] = useState('')
+  const duracion = Number(cita.duracion) || 30
+  const barbero = barberos.find((b) => b.id === cita.barberoId)
+  const revisar = (h, f = fecha) =>
+    revisarHora({ clave: f, hora: h, duracion, barberoId: cita.barberoId, barberoNombre: barbero?.nombre, agenda, bloqueos, horario: config.horario, capacidad: sillas.length, citaId: cita.id })
+
+  // Las próximas 6 horas libres de ese día, cada 15 minutos, desde la que
+  // pidió (o desde ahora, si es hoy y ya pasó).
+  const ahoraMin = new Date().getHours() * 60 + new Date().getMinutes()
+  const desde = Math.max(fecha === cita.fecha ? aMin(cita.hora) + 15 : 0, fecha === hoy ? ahoraMin + 10 : 0)
+  const sugeridas = []
+  for (let t = Math.ceil(desde / 15) * 15; t < 24 * 60 && sugeridas.length < 6; t += 15) {
+    if (revisar(aHHMM(t)).ok) sugeridas.push(aHHMM(t))
+  }
+  const revision = hora ? revisar(hora) : null
+
+  // La silla: la de su barbero o la que tenía, si a esa hora no tiene otra cita.
+  const libreA = (s) => hora && !citaEnSilla(citas, s.id, { fecha, hora, duracion, id: cita.id })
+  const [sillaElegida, setSillaElegida] = useState(null)
+  const sugerida = [sillas.find((s) => s.id === cita.sillaId), sillas.find((s) => cita.barberoId && s.barberoFijoId === cita.barberoId), ...sillas].find((s) => s && libreA(s))
+  const silla = (sillaElegida && libreA(sillas.find((s) => s.id === sillaElegida)) && sillas.find((s) => s.id === sillaElegida)) || sugerida || null
+
+  const cortes = servicios.filter((s) => cita.servicioIds?.includes(s.id))
+  const mismoDia = fecha === cita.fecha
+  const mensaje = [
+    `Hola ${cita.nombre.split(' ')[0]} 👋, te escribimos de *${config.nombre}* ✂`,
+    `Para el ${formatearDia(cita.fecha)} a las ${hora12(cita.hora)} ya no tenemos sitio 🙏, pero te reservamos ${mismoDia ? '' : `el *${formatearDia(fecha)}* `}a las *${hora ? hora12(hora) : ''}*${barbero ? ` con ${barbero.nombre}` : ''}${cortes.length ? ` (${cortes.map((x) => x.nombre).join(' + ')})` : ''}.`,
+    `⌛ Te esperamos hasta ${tolerancia(config)} minutos.`,
+    'Si no te sirve esa hora, respóndenos y vemos otra. ¡Gracias! 💈',
+  ].join('\n')
+  const wa = linkWhatsapp(cita.telefono, mensaje)
+  const listo = Boolean(hora && revision?.ok && silla)
+
+  function cambiar() {
+    cambiarHoraCita(cita.id, { fecha, hora, sillaId: silla.id })
+    onListo(hora)
+  }
+
+  return (
+    <div className="space-y-5">
+      <div>
+        <p className="mb-2 text-xs font-bold uppercase tracking-wide text-tinta-suave">¿Qué día?</p>
+        <input
+          type="date"
+          value={fecha}
+          min={hoy}
+          onChange={(e) => {
+            if (!e.target.value) return
+            setFecha(e.target.value)
+            setHora('')
+          }}
+          className="w-full rounded-xl border border-linea bg-fondo px-3 py-2.5 text-tinta outline-none focus-visible:border-laton"
+        />
+      </div>
+
+      <div>
+        <p className="mb-2 text-xs font-bold uppercase tracking-wide text-tinta-suave">Horas libres {mismoDia ? 'después de la que pidió' : 'ese día'}</p>
+        {sugeridas.length === 0 ? (
+          <p className="rounded-xl bg-fondo px-3 py-3 text-center text-sm text-tinta-suave">Ese día ya no hay horas libres. Prueba otro día.</p>
+        ) : (
+          <div className="grid grid-cols-3 gap-2">
+            {sugeridas.map((h) => (
+              <button
+                key={h}
+                type="button"
+                onClick={() => setHora(h)}
+                aria-pressed={hora === h}
+                className={`cifra rounded-xl border-2 py-2.5 text-sm font-bold ${hora === h ? 'border-laton bg-laton text-fondo' : 'border-linea'}`}
+              >
+                {hora12(h)}
+              </button>
+            ))}
+          </div>
+        )}
+        <p className="mt-3 mb-1.5 text-xs text-tinta-suave">U otra hora:</p>
+        <ElegirHora value={hora} onChange={setHora} etiqueta="Otra hora" />
+        {revision && !revision.ok && <p className="mt-2 rounded-xl bg-ocupada-suave px-3 py-2 text-sm font-bold text-ocupada">✕ {revision.motivo}</p>}
+      </div>
+
+      {hora && revision?.ok && (
+        <div>
+          <p className="mb-2 text-xs font-bold uppercase tracking-wide text-tinta-suave">¿En qué silla?</p>
+          <div className="grid grid-cols-2 gap-2">
+            {sillas.map((s) => (
+              <button
+                key={s.id}
+                type="button"
+                onClick={() => setSillaElegida(s.id)}
+                disabled={!libreA(s)}
+                aria-pressed={silla?.id === s.id}
+                className={`rounded-2xl border-2 px-3 py-3 text-left disabled:opacity-40 ${silla?.id === s.id ? 'border-laton bg-laton-suave' : 'border-linea'}`}
+              >
+                <span className="block font-bold">{s.nombre}</span>
+                <span className="block truncate text-xs text-tinta-suave">{libreA(s) ? barberos.find((b) => b.id === s.barberoFijoId)?.nombre || 'Libre' : 'Tiene otra cita'}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {listo && wa && (
+        <a href={wa} target="_blank" rel="noopener noreferrer" onClick={cambiar} className="block w-full rounded-2xl bg-libre py-4 text-center text-base font-extrabold text-white">
+          🕐 Pasarla a las {hora12(hora)} y avisarle por WhatsApp
+        </a>
+      )}
+      <button type="button" onClick={cambiar} disabled={!listo} className={`w-full rounded-2xl py-3.5 font-extrabold disabled:opacity-40 ${listo && wa ? 'border border-linea text-tinta-suave' : 'bg-laton text-fondo'}`}>
+        {listo ? `🕐 Pasarla a las ${hora12(hora)}${wa ? ' sin avisar' : ''}` : 'Elige una hora libre'}
+      </button>
+      {!wa && <p className="text-center text-xs text-tinta-suave">Este cliente no tiene celular: avísale tú. Él igual ve la hora nueva en su cuenta.</p>}
     </div>
   )
 }

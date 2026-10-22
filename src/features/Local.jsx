@@ -77,7 +77,11 @@ export default function Local() {
   // atendió, o no llegó), deja de salir. Las reservas de antes no
   // guardaban el id: se buscan por día y hora.
   const enAgenda = miCita && agenda.find((a) => (miCita.id ? a.id === miCita.id : a.fecha === miCita.fecha && a.hora === miCita.hora))
-  const citaVigente = miCita && miCita.fecha >= claveDia() && enAgenda ? { ...miCita, confirmada: enAgenda.confirmada } : null
+  // Con el día y la hora de la agenda: si la barbería le dio otra hora, se ve la nueva.
+  const citaVigente =
+    miCita && enAgenda && enAgenda.fecha >= claveDia()
+      ? { ...miCita, fecha: enAgenda.fecha, hora: enAgenda.hora, confirmada: enAgenda.confirmada, cambiada: enAgenda.fecha !== miCita.fecha || enAgenda.hora !== miCita.hora }
+      : null
   // Silla reservada ahora para una cita aceptada (de la agenda pública).
   const reservaDe = (s) => agenda.find((a) => a.confirmada && a.sillaId === s.id && a.fecha === claveDia() && momentoCita(a, config, ahora) === 'ahora')
   const cortandoEn = (b) => sillas.find((s) => s.ocupadaDesde && s.barberoId === b.id)
@@ -124,6 +128,7 @@ export default function Local() {
             {formatearDia(citaVigente.fecha)} · {hora12(citaVigente.hora)}
           </p>
           {citaVigente.barberoNombre && <p className="text-sm">✂ con {citaVigente.barberoNombre}</p>}
+          {citaVigente.cambiada && <p className="mt-1 rounded-lg bg-laton-suave px-2 py-1 text-xs font-bold text-laton">🕐 La barbería cambió tu hora: no había sitio a las {hora12(miCita.hora)}</p>}
           <p className="mt-1 text-sm font-bold">{citaVigente.confirmada ? '✓ Confirmada por la barbería' : '⏳ Esperando que la barbería la confirme'}</p>
           <p className="mt-1 text-xs font-semibold">⌛ Llega a tiempo: te esperamos máximo {tolerancia(config)} minutos.</p>
           <p className="mt-1 text-xs text-tinta-suave">Para cambiarla o cancelarla, escríbele a la barbería.</p>
