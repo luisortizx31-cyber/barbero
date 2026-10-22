@@ -9,16 +9,25 @@ import { hora12 } from '../domain/horario'
 import { sillaDelCliente } from '../domain/sillas'
 
 // Los cortes del local como botones para marcar (se puede elegir más
-// de uno, por ejemplo corte + cejas).
-export function ElegirCortes({ servicios, elegidos, onCambiar }) {
+// de uno, por ejemplo corte + cejas). `plegable` (pedido del usuario,
+// 2026-10-22): si ya viene un corte elegido (el de la cita, el de
+// siempre, el que se eligió al ocupar), se ve solo ese y los demás se
+// abren con un toque; si no hay ninguno, se ven todos.
+export function ElegirCortes({ servicios, elegidos, onCambiar, plegable = true }) {
+  const [abierto, setAbierto] = useState(() => !plegable || elegidos.length === 0)
   function alternar(id) {
     onCambiar(elegidos.includes(id) ? elegidos.filter((x) => x !== id) : [...elegidos, id])
   }
   if (servicios.length === 0) return <p className="text-sm text-tinta-suave">Todavía no hay cortes. Agrégalos en Más → Cortes.</p>
   const conFotos = servicios.some((x) => x.foto)
+  const marcados = servicios.filter((x) => elegidos.includes(x.id))
+  // Plegado, pero sin ninguno elegido (se desmarcó): se ven todos.
+  const visibles = abierto || marcados.length === 0 ? servicios : marcados
+  const resto = servicios.length - marcados.length
   return (
+    <div>
     <div className="grid grid-cols-2 gap-2">
-      {servicios.map((x) => {
+      {visibles.map((x) => {
         const marcado = elegidos.includes(x.id)
         return (
           <button
@@ -39,6 +48,17 @@ export function ElegirCortes({ servicios, elegidos, onCambiar }) {
           </button>
         )
       })}
+    </div>
+    {plegable && marcados.length > 0 && resto > 0 && (
+      <button
+        type="button"
+        onClick={() => setAbierto((v) => !v)}
+        aria-expanded={abierto}
+        className="mt-2 w-full rounded-xl border border-dashed border-linea py-2.5 text-sm font-bold text-tinta-suave"
+      >
+        {abierto ? '▲ Ver solo lo elegido' : `▼ Ver los demás cortes (${resto})`}
+      </button>
+    )}
     </div>
   )
 }

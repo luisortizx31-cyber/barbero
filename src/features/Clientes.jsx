@@ -217,7 +217,7 @@ function FichaCliente({ cliente, estado, servicios, onListo }) {
       <p className="-mt-2 text-xs text-tinta-suave">Sin celular también se guarda (solo con su nombre). Con el celular de su papá o mamá, en la página de clientes se encuentran todos los de la familia.</p>
       <div>
         <p className="mb-2 text-xs font-bold uppercase tracking-wide text-tinta-suave">Su corte de siempre</p>
-        {habituales.length > 0 && <ElegirCortes servicios={habituales} elegidos={cortes} onCambiar={setCortes} />}
+        {habituales.length > 0 && <ElegirCortes servicios={habituales} elegidos={cortes} onCambiar={setCortes} plegable={false} />}
         {otros.length > 0 && (
           <>
             {habituales.length > 0 && (
@@ -231,7 +231,7 @@ function FichaCliente({ cliente, estado, servicios, onListo }) {
             )}
             {verOtros && (
               <div className="mt-2">
-                <ElegirCortes servicios={otros} elegidos={cortes} onCambiar={setCortes} />
+                <ElegirCortes servicios={otros} elegidos={cortes} onCambiar={setCortes} plegable={false} />
               </div>
             )}
           </>
