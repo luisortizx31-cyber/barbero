@@ -257,13 +257,17 @@ export function HojaOcupar({ silla, sillas: sillasTodas = [], servicios, cliente
 }
 
 // Al liberar: cobrar lo que se hizo (cortes y productos) y cómo pagó.
-// Si al cliente le toca el corte gratis de la tarjeta, se ofrece.
-export function HojaCobrar({ silla, servicios, productos, historial, config, ahora, onCobrar, onSinCobrar }) {
+// Si al cliente le toca el corte gratis de la tarjeta, se ofrece; si con
+// este corte la completa, se avisa. `tarjeta`: la del cliente si ya se
+// sabe (los barberos, sin cuenta, la sacan de su ficha pública); si no,
+// se calcula del historial.
+export function HojaCobrar({ silla, servicios, productos, historial, config, ahora, tarjeta: tarjetaDada, onCobrar, onSinCobrar }) {
   const [elegidos, setElegidos] = useState(() => (silla.servicioIds || []).filter((id) => servicios.some((x) => x.id === id)))
   const [vendidos, setVendidos] = useState({}) // productoId -> cantidad
   const [montoManual, setMontoManual] = useState(null) // null = la suma
   const [metodo, setMetodo] = useState('efectivo')
-  const tarjeta = fidelidad(historial, silla.clienteId, Number(config.fidelidadCada) || 0)
+  const tarjeta = tarjetaDada !== undefined ? tarjetaDada : fidelidad(historial, silla.clienteId, Number(config.fidelidadCada) || 0)
+  const completa = tarjeta && !tarjeta.tocaGratis && tarjeta.sellos === tarjeta.meta - 1
   const [gratis, setGratis] = useState(false)
 
   const itemsProductos = productos.filter((p) => vendidos[p.id] > 0).map((p) => ({ id: p.id, nombre: p.nombre, precio: p.precio, cantidad: vendidos[p.id] }))
@@ -302,6 +306,12 @@ export function HojaCobrar({ silla, servicios, productos, historial, config, aho
             <span className="text-xs text-tinta-suave">Completó su tarjeta de {tarjeta.meta} cortes. Márcalo para no cobrarle el corte.</span>
           </span>
         </label>
+      )}
+      {completa && (
+        <p className="rounded-2xl border border-libre/50 bg-libre-suave px-3 py-2.5 text-sm">
+          <span className="font-extrabold text-libre">🎁 Con este corte completa su tarjeta</span>
+          <span className="block text-xs text-tinta-suave">Lleva {tarjeta.sellos} de {tarjeta.meta}: al cobrarle, su próximo corte será gratis.</span>
+        </p>
       )}
 
       <div>

@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
-import { useEstado, ocuparSilla, liberarSilla, anotarEnEspera, quitarDeEspera, moverEnEspera, guardarCliente, obtenerEstado, restaurar } from '../data/store'
+import { useEstado, useSesion, ocuparSilla, liberarSilla, anotarEnEspera, quitarDeEspera, moverEnEspera, guardarCliente, obtenerEstado, restaurar } from '../data/store'
+import { enlaces } from '../data/plataforma'
+import { fidelidad, linkWhatsapp } from '../domain/clientes'
 import { formatearHora, formatearDuracion, useAhora, claveDia } from '../domain/hora'
 import { formatearMonto } from '../domain/dinero'
 import { esperaEstimada } from '../domain/espera'
@@ -43,6 +45,10 @@ export default function Pantalla({ pantallaCompleta, onPantallaCompleta, soloVer
   const ahora = useAhora(1000)
   const [deshacer, setDeshacer] = useState(null) // { texto, anterior }
   const [hoja, setHoja] = useState(null) // { tipo: 'ocupar' | 'cobrar' | 'espera', sillaId, citaId }
+  // El cliente que con el cobro recién completó su tarjeta: se avisa que
+  // su próximo corte es gratis (pedido del usuario, 2026-10-22).
+  const [premio, setPremio] = useState(null) // { nombre, clienteId }
+  const { barberiaId } = useSesion()
   const sillaHoja = hoja?.sillaId && sillas.find((s) => s.id === hoja.sillaId)
   const temporizador = useRef(null)
 
@@ -59,6 +65,10 @@ export default function Pantalla({ pantallaCompleta, onPantallaCompleta, soloVer
   }
 
   const libres = sillas.filter((s) => !s.ocupadaDesde)
+  // La tarjeta de un cliente: el dueño la calcula de su historial; los
+  // barberos (sin cuenta) la toman de su ficha pública.
+  const tarjetaDe = (clienteId) =>
+    !clienteId ? null : conCitas ? fidelidad(historial, clienteId, Number(config.fidelidadCada) || 0) : estado.fichas?.find((f) => f.id === clienteId)?.tarjeta || null
   const reloj = new Date(ahora).toLocaleTimeString('es-PE', { hour: 'numeric', minute: '2-digit', hour12: true })
   const esperas = esperaEstimada(sillas, espera, historial, ahora, servicios)
   const nombreBarbero = (id) => barberos.find((b) => b.id === id)?.nombre || ''
@@ -290,9 +300,14 @@ export default function Pantalla({ pantallaCompleta, onPantallaCompleta, soloVer
             historial={historial}
             config={config}
             ahora={ahora}
+            tarjeta={tarjetaDe(sillaHoja.clienteId)}
             onCobrar={(cobro) => {
+              const t = tarjetaDe(sillaHoja.clienteId)
+              const quien = { nombre: sillaHoja.cliente, clienteId: sillaHoja.clienteId }
               accion(`${cobro.monto > 0 ? `Cobrado ${formatearMonto(cobro.monto)}` : 'Corte gratis'} · ${sillaHoja.nombre} libre`, () => liberarSilla(sillaHoja.id, cobro))
               setHoja(null)
+              // Con este cobro completó la tarjeta: su próximo corte es gratis.
+              if (!cobro.gratis && t && !t.tocaGratis && t.sellos + 1 >= t.meta) setPremio(quien)
             }}
             onSinCobrar={() => {
               accion(`${sillaHoja.nombre} liberada sin cobrar`, () => liberarSilla(sillaHoja.id))
@@ -316,7 +331,13 @@ export default function Pantalla({ pantallaCompleta, onPantallaCompleta, soloVer
         </Hoja>
       )}
 
-      {deshacer && !hoja && (
+      {premio && (
+        <Hoja titulo="🎁 ¡Completó su tarjeta!" onCerrar={() => setPremio(null)}>
+          <AvisoPremio premio={premio} clientes={clientes} config={config} barberiaId={barberiaId} onListo={() => setPremio(null)} />
+        </Hoja>
+      )}
+
+      {deshacer && !hoja && !premio && (
         <div role="status" className="fixed inset-x-0 bottom-4 z-50 mx-auto flex w-[calc(100%-2rem)] max-w-sm items-center justify-between gap-3 rounded-2xl bg-tinta px-4 py-3 text-fondo shadow-2xl">
           <span className="text-sm font-semibold">✓ {deshacer.texto}</span>
           <button
@@ -331,6 +352,39 @@ export default function Pantalla({ pantallaCompleta, onPantallaCompleta, soloVer
           </button>
         </div>
       )}
+    </div>
+  )
+}
+
+// Aviso al cobrar el corte que completa la tarjeta: decirle al cliente
+// (ahí mismo o por WhatsApp) que su próximo corte es gratis.
+function AvisoPremio({ premio, clientes, config, barberiaId, onListo }) {
+  const cliente = clientes.find((c) => c.id === premio.clienteId)
+  const nombre = (cliente?.nombre || premio.nombre || '').split(' ')[0]
+  const mensaje = [
+    `Hola ${nombre} 👋, gracias por venir a *${config.nombre}* ✂`,
+    '',
+    '🎁 *¡Completaste tu tarjeta!* Tu próximo corte es *GRATIS*.',
+    'Te esperamos 💈',
+    '',
+    `Mira tu tarjeta y reserva aquí 👇`,
+    enlaces(barberiaId).local,
+  ].join('\n')
+  const wa = linkWhatsapp(cliente?.telefono, mensaje)
+  return (
+    <div className="space-y-4 text-center">
+      <p className="text-6xl">🎁</p>
+      <p className="text-xl font-extrabold">{nombre ? `${nombre} completó su tarjeta` : 'Completó su tarjeta'}</p>
+      <p className="rounded-2xl bg-libre-suave px-4 py-3 text-base font-bold text-libre">Su próximo corte es GRATIS</p>
+      <p className="text-sm text-tinta-suave">Díselo ahora que está aquí. La próxima vez que venga, al cobrarle saldrá «🎁 ¡Le toca su corte gratis!».</p>
+      {wa && (
+        <a href={wa} target="_blank" rel="noopener noreferrer" onClick={onListo} className="block w-full rounded-2xl bg-libre py-4 font-extrabold text-white">
+          💬 Avisarle por WhatsApp
+        </a>
+      )}
+      <button type="button" onClick={onListo} className={`w-full rounded-2xl py-3.5 font-extrabold ${wa ? 'border border-linea text-tinta-suave' : 'bg-laton text-fondo'}`}>
+        Listo
+      </button>
     </div>
   )
 }
