@@ -7,6 +7,7 @@ import { SUPER_UID, obtenerPerfil } from './plataforma'
 import { HORARIO_INICIAL, bloquesDe, carrilLibre } from '../domain/horario'
 import { digitosCelular, huellaCelular, fidelidad } from '../domain/clientes'
 import { claveDia } from '../domain/hora'
+import { sillaDelCliente } from '../domain/sillas'
 
 // Todo lo de la barbería: el estado y las acciones que lo cambian.
 // Al principio vivía solo en este equipo (localStorage); desde el
@@ -310,7 +311,7 @@ export function ocuparSilla(id, { servicioIds = [], clienteId = null, nombre = '
     return false
   }
   // Ni un cliente en dos sillas (pedido del usuario, 2026-10-20).
-  const sentado = clienteId && estado.sillas.find((s) => s.id !== id && s.ocupadaDesde && s.clienteId === clienteId)
+  const sentado = sillaDelCliente(estado.sillas, { clienteId, nombre }, id)
   if (sentado) {
     alert(`${nombre || 'Ese cliente'} ya se está cortando en ${sentado.nombre}. Libérala primero.`)
     return false

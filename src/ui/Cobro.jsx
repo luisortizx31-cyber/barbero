@@ -6,6 +6,7 @@ import { totalProductos } from '../domain/caja'
 import { FotoBarbero } from './FotoBarbero'
 import { FotoCorte } from './FotoCorte'
 import { hora12 } from '../domain/horario'
+import { sillaDelCliente } from '../domain/sillas'
 
 // Los cortes del local como botones para marcar (se puede elegir más
 // de uno, por ejemplo corte + cejas).
@@ -124,8 +125,9 @@ export function HojaOcupar({ silla, sillas: sillasTodas = [], servicios, cliente
   // por su nombre.
   const otrasOcupadas = sillasTodas.filter((s) => s.id !== silla.id && s.ocupadaDesde)
   const sentadoEn = (clienteId) => (clienteId && otrasOcupadas.find((s) => s.clienteId === clienteId)) || null
-  const mismoNombreEn = (nombre) => (nombre?.trim() && otrasOcupadas.find((s) => !s.clienteId && s.cliente && s.cliente.trim().toLowerCase() === nombre.trim().toLowerCase())) || null
-  const yaSentado = (o) => sentadoEn(o.clienteId) || mismoNombreEn(o.nombre)
+  // Por la ficha o por el mismo nombre escrito a mano (aunque el que está
+  // sentado sea un cliente registrado: bug real, 2026-10-22).
+  const yaSentado = (o) => sentadoEn(o.clienteId) || sillaDelCliente(otrasOcupadas, { nombre: o.nombre })
   // De entrada, el primero que puede sentarse en ESTA silla (sin
   // preferencia, o que quiere al barbero de esta silla).
   const puedenSentarse = opciones.filter((o) => !yaSentado(o))

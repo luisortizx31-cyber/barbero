@@ -9,7 +9,7 @@ import { SillaImagen } from '../ui/SillaDibujo'
 import { Hoja } from '../ui/Hoja'
 import { HojaOcupar, HojaCobrar, ElegirCliente, ElegirCortes } from '../ui/Cobro'
 import { FotoBarbero } from '../ui/FotoBarbero'
-import { barberoDeSilla } from '../domain/sillas'
+import { barberoDeSilla, sillaDelCliente } from '../domain/sillas'
 import { ESTADOS_ACTIVOS, momentoCita, esperaHasta, sillaParaCita } from '../domain/citas'
 import { ElegirBarbero } from '../ui/ElegirBarbero'
 
@@ -97,8 +97,11 @@ export default function Pantalla({ pantallaCompleta, onPantallaCompleta, soloVer
   // Una cita es de una silla si la pidió para esa silla o con el barbero de esa silla.
   const esDeSilla = (c, id) => c.sillaId === id || (!c.sillaId && c.barberoId && sillas.find((s) => s.id === id)?.barberoFijoId === c.barberoId)
   // La próxima cita de una silla (en las próximas 2 horas), primero las aceptadas.
+  // Dónde está sentado ya el cliente de una cita (si llegó y lo sentaron
+  // sin elegir su cita): esa cita no se ofrece ni se muestra en otra silla.
+  const sentadoDe = (c) => sillaDelCliente(sillas, { clienteId: c.clienteId, nombre: c.nombre })
   const citaDeSilla = (id) => {
-    const suyas = citasHoy.filter((c) => esDeSilla(c, id) && msDeHora(c.hora) < ahora + 120 * 60000)
+    const suyas = citasHoy.filter((c) => esDeSilla(c, id) && msDeHora(c.hora) < ahora + 120 * 60000 && !sentadoDe(c))
     return suyas.find((c) => c.estado === 'confirmada') || suyas[0]
   }
   const citasParaOcupar = (id, citaId) => citasHoy.filter((c) => c.id === citaId || (!c.sillaId && !c.barberoId) || esDeSilla(c, id) || (c.barberoId && !tieneSilla(c.barberoId)))
@@ -253,7 +256,9 @@ export default function Pantalla({ pantallaCompleta, onPantallaCompleta, soloVer
                       {c.servicioIds?.length ? ` · ${servicios.filter((s) => c.servicioIds.includes(s.id)).map((s) => s.nombre).join(' + ')}` : ''}
                     </span>
                   </span>
-                  {!soloVer && !pantallaCompleta && (
+                  {sentadoDe(c) ? (
+                    <span className="shrink-0 rounded-xl bg-libre-suave px-3 py-2 text-xs font-bold text-libre">✂ En {sentadoDe(c).nombre}</span>
+                  ) : !soloVer && !pantallaCompleta && (
                     <button type="button" onClick={() => llegoCita(c)} className="shrink-0 rounded-xl bg-libre px-3 py-2 text-xs font-bold text-white">
                       ✂ Llegó
                     </button>
