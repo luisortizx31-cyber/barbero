@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { useEstado, guardarCita, cambiarEstadoCita, cancelarCita, eliminarCita, guardarCliente, aceptarCita, ocuparSilla } from '../data/store'
+import { useEstado, guardarCita, cambiarEstadoCita, cancelarCita, eliminarCita, guardarCliente, aceptarCita, ocuparSilla, unirCitaConSilla } from '../data/store'
 import { claveDia, formatearDia, formatearHora } from '../domain/hora'
 import { linkWhatsapp } from '../domain/clientes'
 import { formatearMonto } from '../domain/dinero'
@@ -86,6 +86,11 @@ export default function Citas() {
         setSentando(c)
       }}
       onNoLlego={() => cambiarEstadoCita(c.id, 'no-llego')}
+      onEliminar={() => {
+        if (!confirm(`¿Eliminar la cita de ${c.nombre} (${hora12(c.hora)})? Se borra del todo.${ESTADOS_ACTIVOS.includes(c.estado) ? ' Su hora queda libre.' : ''}`)) return
+        eliminarCita(c.id)
+        setAviso(`🗑 Se eliminó la cita de ${c.nombre}`)
+      }}
     />
   )
 
@@ -175,7 +180,7 @@ export default function Citas() {
 }
 
 // Una cita, con lo que se puede hacer según cómo está.
-function FilaCita({ cita: c, conFecha, estado, ahora, onEditar, onAceptar, onCancelar, onLlego, onNoLlego }) {
+function FilaCita({ cita: c, conFecha, estado, ahora, onEditar, onAceptar, onCancelar, onLlego, onNoLlego, onEliminar }) {
   const { sillas, servicios, clientes, config, barberos, historial } = estado
   const silla = sillas.find((s) => s.id === c.sillaId)
   const barbero = barberos.find((b) => b.id === c.barberoId)
@@ -189,6 +194,8 @@ function FilaCita({ cita: c, conFecha, estado, ahora, onEditar, onAceptar, onCan
   // Atendida: dónde está o qué se cobró.
   const cortandose = c.estado === 'atendida' && sillas.find((s) => s.ocupadaDesde && s.citaId === c.id)
   const cobrada = c.estado === 'atendida' && historial.find((h) => h.citaId === c.id)
+  // Ya está sentado en una silla, pero sin su cita elegida.
+  const sentadoSinCita = activa && esHoy && c.clienteId && sillas.find((s) => s.ocupadaDesde && s.clienteId === c.clienteId && !s.citaId)
   const info = ESTADOS[c.estado] || ESTADOS.pendiente
 
   return (
@@ -227,8 +234,18 @@ function FilaCita({ cita: c, conFecha, estado, ahora, onEditar, onAceptar, onCan
       )}
       {c.estado === 'cancelada' && c.motivo && <p className="border-t border-linea px-4 py-2 text-xs text-ocupada">Motivo: {c.motivo}</p>}
 
+      {/* Ya está en una silla: unir la cita con esa silla */}
+      {sentadoSinCita && (
+        <div className="flex items-center justify-between gap-2 border-t border-libre/40 bg-libre-suave px-4 py-2.5 text-xs">
+          <span className="font-bold text-libre">✂ Ya está en {sentadoSinCita.nombre}</span>
+          <button type="button" onClick={() => unirCitaConSilla(c.id, sentadoSinCita.id)} className="rounded-lg bg-libre px-3 py-1.5 font-bold text-white">
+            ✓ Es su cita · marcar atendida
+          </button>
+        </div>
+      )}
+
       {/* Se pasó la tolerancia */}
-      {vencida && (
+      {vencida && !sentadoSinCita && (
         <div className="grid grid-cols-2 divide-x divide-ocupada/30 border-t border-ocupada/40 bg-ocupada-suave text-xs font-bold">
           <button type="button" onClick={onLlego} className="py-2.5 text-libre">
             ✂ Llegó tarde · sentarlo
@@ -240,7 +257,7 @@ function FilaCita({ cita: c, conFecha, estado, ahora, onEditar, onAceptar, onCan
       )}
 
       {/* Por aceptar */}
-      {c.estado === 'pendiente' && !vencida && (
+      {c.estado === 'pendiente' && !vencida && !sentadoSinCita && (
         <div className="grid grid-cols-2 divide-x divide-linea border-t border-linea text-sm font-bold">
           <button type="button" onClick={onAceptar} className="py-3 text-libre">
             ✓ Aceptar
@@ -252,7 +269,7 @@ function FilaCita({ cita: c, conFecha, estado, ahora, onEditar, onAceptar, onCan
       )}
 
       {/* Aceptada */}
-      {c.estado === 'confirmada' && !vencida && (
+      {c.estado === 'confirmada' && !vencida && !sentadoSinCita && (
         <>
           <div className={`grid ${esHoy ? 'grid-cols-3' : 'grid-cols-2'} divide-x divide-linea border-t border-linea text-xs font-bold`}>
             {esHoy && (
@@ -276,6 +293,12 @@ function FilaCita({ cita: c, conFecha, estado, ahora, onEditar, onAceptar, onCan
           </p>
         </>
       )}
+
+      <div className="flex justify-end border-t border-linea px-3 py-1">
+        <button type="button" onClick={onEliminar} className="rounded-lg px-2 py-1 text-[11px] font-semibold text-tinta-suave hover:text-ocupada">
+          🗑 Eliminar cita
+        </button>
+      </div>
     </li>
   )
 }
@@ -283,7 +306,13 @@ function FilaCita({ cita: c, conFecha, estado, ahora, onEditar, onAceptar, onCan
 function FormCita({ cita, diaInicial, sillas, servicios, clientes, barberos, onListo }) {
   const [barberoId, setBarberoId] = useState(cita?.barberoId || null)
   const [fecha, setFecha] = useState(cita?.fecha || diaInicial)
-  const [hora, setHora] = useState(cita?.hora || '10:00')
+  const [hora, setHora] = useState(() => {
+    if (cita?.hora) return cita.hora
+    // De entrada, la próxima media hora (no una que ya pasó).
+    const d = new Date(Date.now() + 30 * 60000)
+    d.setMinutes(d.getMinutes() < 30 ? 30 : 60, 0, 0)
+    return d.toTimeString().slice(0, 5)
+  })
   const [sillaId, setSillaId] = useState(cita?.sillaId || '')
   const [cliente, setCliente] = useState({ clienteId: cita?.clienteId || null, nombre: cita?.nombre || '' })
   const [telefono, setTelefono] = useState(cita?.telefono || '')
@@ -297,7 +326,20 @@ function FormCita({ cita, diaInicial, sillas, servicios, clientes, barberos, onL
   const barbero = barberos.find((b) => b.id === barberoId)
   const revision = fecha && hora ? revisarHora({ clave: fecha, hora, duracion, barberoId, barberoNombre: barbero?.nombre, agenda, bloqueos, capacidad: sillas.length, citaId: cita?.id, soloCupo: true }) : null
   const enSilla = sillaId ? citaEnSilla(citas, sillaId, { fecha, hora, duracion, id: cita?.id }) : null
-  const choque = revision && !revision.ok ? revision.motivo : enSilla ? `${enSilla.nombre} ya tiene esa silla a las ${hora12(enSilla.hora)}. Elige otra silla.` : null
+  // Una cita nueva (o movida) no puede quedar en una hora que ya pasó.
+  const hoy = claveDia()
+  const ahoraHHMM = new Date().toTimeString().slice(0, 5)
+  const movida = !cita || cita.fecha !== fecha || cita.hora !== hora
+  const pasada = movida && fecha && hora && (fecha < hoy || (fecha === hoy && hora <= ahoraHHMM))
+  const choque = pasada
+    ? fecha < hoy
+      ? 'Ese día ya pasó. Elige hoy o un día que viene.'
+      : `Esa hora ya pasó (son las ${hora12(ahoraHHMM)}). Elige una hora más tarde.`
+    : revision && !revision.ok
+      ? revision.motivo
+      : enSilla
+        ? `${enSilla.nombre} ya tiene esa silla a las ${hora12(enSilla.hora)}. Elige otra silla.`
+        : null
 
   function guardar() {
     let { clienteId } = cliente
@@ -321,8 +363,8 @@ function FormCita({ cita, diaInicial, sillas, servicios, clientes, barberos, onL
   return (
     <div className="space-y-4">
       <div className="grid grid-cols-2 gap-2">
-        <input type="date" value={fecha} onChange={(e) => setFecha(e.target.value)} aria-label="Fecha" className="rounded-xl border border-linea bg-fondo px-3 py-2.5 text-tinta outline-none focus-visible:border-laton" />
-        <input type="time" value={hora} onChange={(e) => setHora(e.target.value)} aria-label="Hora" className="rounded-xl border border-linea bg-fondo px-3 py-2.5 text-tinta outline-none focus-visible:border-laton" />
+        <input type="date" value={fecha} min={cita ? undefined : hoy} onChange={(e) => setFecha(e.target.value)} aria-label="Fecha" className="rounded-xl border border-linea bg-fondo px-3 py-2.5 text-tinta outline-none focus-visible:border-laton" />
+        <input type="time" value={hora} min={fecha === hoy && !cita ? ahoraHHMM : undefined} onChange={(e) => setHora(e.target.value)} aria-label="Hora" className="rounded-xl border border-linea bg-fondo px-3 py-2.5 text-tinta outline-none focus-visible:border-laton" />
       </div>
       <ElegirCliente
         clientes={clientes}

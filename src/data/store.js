@@ -295,8 +295,12 @@ function quitarDe(coleccion, id) {
 // pasa a mostrarlo y su nombre queda para la comisión.
 // `esperaId`: si venía de la cola, sale de la cola.
 // `citaId`: si tenía cita, la cita queda atendida.
-export function ocuparSilla(id, { servicioIds = [], clienteId = null, nombre = '', esperaId = null, citaId = null, barberoId } = {}) {
+export function ocuparSilla(id, { servicioIds = [], clienteId = null, nombre = '', esperaId = null, citaId: citaElegida = null, barberoId } = {}) {
   const barbero = barberoId ? estado.barberos.find((b) => b.id === barberoId) : null
+  // Si no se eligió su cita pero el cliente tiene una hoy (aunque ya se
+  // haya pasado la tolerancia), es esa: se une sola (bug real,
+  // 2026-10-22: lo sentaron en la silla y la cita seguía "Aceptada").
+  const citaId = citaElegida || citaDeHoyDe(clienteId)
   // Un barbero no puede estar cortando en dos sillas a la vez (pedido
   // del usuario, 2026-10-18). La ventana de ocupar ya no lo deja elegir;
   // esto es por si dos celulares lo intentan al mismo tiempo.
@@ -391,6 +395,31 @@ function descontarStock(productos, vendidos = []) {
   return productos.map((p) => {
     const v = vendidos.find((x) => x.id === p.id)
     return v && p.stock != null ? { ...p, stock: Math.max(0, p.stock - v.cantidad) } : p
+  })
+}
+
+// La cita de hoy, sin atender, de un cliente (la más temprana), o null.
+// El dueño la busca en sus citas; los barberos (sin cuenta), en la agenda.
+function citaDeHoyDe(clienteId) {
+  if (!clienteId) return null
+  const hoy = claveDia()
+  const fuente = sesion.rol === 'dueno' ? estado.citas.filter((c) => CITA_ACTIVA.includes(c.estado)) : estado.agenda
+  const suyas = fuente.filter((c) => c.fecha === hoy && c.clienteId === clienteId).sort((a, b) => a.hora.localeCompare(b.hora))
+  return suyas[0]?.id || null
+}
+
+// El cliente de una cita ya estaba sentado en una silla sin su cita
+// elegida: se unen (la cita queda atendida en esa silla y al cobrar
+// muestra lo cobrado).
+export function unirCitaConSilla(citaId, sillaId) {
+  const silla = estado.sillas.find((s) => s.id === sillaId)
+  if (!silla?.ocupadaDesde) return
+  fijar({
+    ...estado,
+    sillas: estado.sillas.map((s) => (s.id === sillaId ? { ...s, citaId } : s)),
+    ...conCitas(
+      estado.citas.map((c) => (c.id === citaId ? { ...c, estado: 'atendida', atendidaEn: silla.ocupadaDesde, sillaId, barberoId: silla.barberoId || c.barberoId || null } : c))
+    ),
   })
 }
 
