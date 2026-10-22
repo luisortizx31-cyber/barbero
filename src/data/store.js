@@ -687,7 +687,7 @@ export async function reservarCitaWeb({ fecha, hora, duracion, barberoId, servic
 // --- Cortes y precios -------------------------------------------------------
 
 export function agregarServicio(nombre, precio, duracion = 30, foto = null) {
-  agregarEn('servicios', { nombre: nombre.trim(), precio: Number(precio) || 0, duracion: Math.max(5, Number(duracion) || 30), foto })
+  return agregarEn('servicios', { nombre: nombre.trim(), precio: Number(precio) || 0, duracion: Math.max(5, Number(duracion) || 30), foto })
 }
 
 export function guardarServicio(id, datos) {
