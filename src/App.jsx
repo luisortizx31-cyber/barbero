@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { useEstado, useSesion, salir } from './data/store'
+import { useEstado, useSesion, salir, leerRuta } from './data/store'
 import Entrar from './features/Entrar'
 import Plataforma from './features/Plataforma'
 import Local from './features/Local'
@@ -69,10 +69,14 @@ function AppBarbero({ barberiaId }) {
   const { barberos } = useEstado()
   const clave = `barberia:yo:${barberiaId}`
   const [yoId, setYoId] = useState(() => {
+    // Con su enlace personal (se lo mandó el dueño por WhatsApp) entra
+    // directo como él, y queda recordado en su celular.
+    const delEnlace = leerRuta().yo
     try {
-      return localStorage.getItem(clave)
+      if (delEnlace) localStorage.setItem(clave, delEnlace)
+      return delEnlace || localStorage.getItem(clave)
     } catch {
-      return null
+      return delEnlace
     }
   })
   const [editando, setEditando] = useState(false)

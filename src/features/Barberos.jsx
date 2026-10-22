@@ -3,12 +3,26 @@ import { useEstado, useSesion, registrarBarbero, guardarBarbero, eliminarBarbero
 import { enlaces } from '../data/plataforma'
 import { FotoBarbero, SubirFotoBarbero } from '../ui/FotoBarbero'
 import { Hoja } from '../ui/Hoja'
+import { linkWhatsapp } from '../domain/clientes'
 
 // Los barberos del local (para el dueño): se registran solos desde su
 // enlace, o los agrega el dueño acá. Cada uno con su foto, que sale en
-// la silla que ocupa.
+// la silla que ocupa. A cada uno se le manda por WhatsApp su enlace
+// personal, con el que entra directo como él (pedido del usuario,
+// 2026-10-22).
+
+function mensajeEnlace(nombreBarberia, enlace, nombre = '') {
+  return [
+    `Hola${nombre ? ` ${nombre.split(' ')[0]}` : ''} 👋, este es tu enlace para entrar como barbero en *${nombreBarberia}* ✂`,
+    '',
+    enlace,
+    '',
+    'Ábrelo en tu celular: ahí ocupas tu silla, ves las citas de hoy y cobras.',
+    '📲 Consejo: en Chrome toca ⋮ → «Instalar app» y te queda como una aplicación.',
+  ].join('\n')
+}
 export default function Barberos() {
-  const { barberos, sillas } = useEstado()
+  const { barberos, sillas, config } = useEstado()
   const { barberiaId } = useSesion()
   const [abierto, setAbierto] = useState(null) // barbero | 'nuevo'
   const e = enlaces(barberiaId)
@@ -23,12 +37,22 @@ export default function Barberos() {
           + Barbero
         </button>
       </div>
-      <p className="text-sm text-tinta-suave">
-        También se pueden registrar solos con su foto desde este enlace:{' '}
-        <a href={e.barbero} target="_blank" rel="noopener noreferrer" className="break-all text-laton underline decoration-dotted">
-          {e.barbero.replace(/^https?:\/\//, '')}
+      <div className="space-y-2 rounded-2xl border border-linea bg-panel p-4">
+        <p className="text-sm text-tinta-suave">
+          Toca <span className="font-bold text-libre">💬 Enviar</span> en cada barbero para mandarle por WhatsApp su enlace: entra directo como él. Un barbero nuevo se registra solo, con su foto, desde este enlace:{' '}
+          <a href={e.barbero} target="_blank" rel="noopener noreferrer" className="break-all text-laton underline decoration-dotted">
+            {e.barbero.replace(/^https?:\/\//, '')}
+          </a>
+        </p>
+        <a
+          href={`https://wa.me/?text=${encodeURIComponent(mensajeEnlace(config.nombre, e.barbero))}`}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="block w-full rounded-xl border border-libre/60 py-2.5 text-center text-sm font-bold text-libre"
+        >
+          📤 Invitar a un barbero nuevo por WhatsApp
         </a>
-      </p>
+      </div>
 
       {barberos.length === 0 ? (
         <p className="rounded-2xl border border-dashed border-linea p-6 text-center text-tinta-suave">Todavía no hay barberos registrados.</p>
@@ -36,9 +60,10 @@ export default function Barberos() {
         <ul className="divide-y divide-linea overflow-hidden rounded-2xl border border-linea bg-panel">
           {barberos.map((b) => {
             const silla = sillas.find((s) => s.barberoId === b.id && s.ocupadaDesde)
+            const wa = linkWhatsapp(b.telefono, mensajeEnlace(config.nombre, e.barberoDe(b.id), b.nombre))
             return (
-              <li key={b.id}>
-                <button type="button" onClick={() => setAbierto(b)} className="flex w-full items-center gap-3 px-4 py-3 text-left">
+              <li key={b.id} className="flex items-center gap-2 pr-3">
+                <button type="button" onClick={() => setAbierto(b)} className="flex min-w-0 flex-1 items-center gap-3 py-3 pl-4 text-left">
                   <FotoBarbero barbero={b} />
                   <span className="min-w-0 flex-1">
                     <span className="block truncate font-bold">{b.nombre}</span>
@@ -47,8 +72,16 @@ export default function Barberos() {
                       {b.telefono ? ` · ${b.telefono}` : ''}
                     </span>
                   </span>
-                  <span className="text-tinta-suave">›</span>
                 </button>
+                {wa ? (
+                  <a href={wa} target="_blank" rel="noopener noreferrer" className="shrink-0 rounded-xl bg-libre px-3 py-2 text-xs font-bold text-white">
+                    💬 Enviar
+                  </a>
+                ) : (
+                  <button type="button" onClick={() => setAbierto(b)} className="shrink-0 rounded-xl border border-linea px-3 py-2 text-[11px] font-bold text-tinta-suave">
+                    + Celular
+                  </button>
+                )}
               </li>
             )
           })}

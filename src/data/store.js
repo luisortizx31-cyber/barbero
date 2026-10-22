@@ -109,7 +109,8 @@ function inicial(nombre) {
 
 export function leerRuta() {
   const partes = (typeof location !== 'undefined' ? location.hash : '').replace(/^#\/?/, '').split('/').filter(Boolean)
-  if (['barbero', 'pantalla', 'local'].includes(partes[0]) && partes[1]) return { modo: partes[0], id: decodeURIComponent(partes[1]) }
+  // #/barbero/{id}/{barberoId}: el enlace personal de un barbero.
+  if (['barbero', 'pantalla', 'local'].includes(partes[0]) && partes[1]) return { modo: partes[0], id: decodeURIComponent(partes[1]), yo: partes[2] ? decodeURIComponent(partes[2]) : null }
   return { modo: 'panel', id: null }
 }
 

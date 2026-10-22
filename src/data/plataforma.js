@@ -118,6 +118,8 @@ export function enlaces(slug) {
   return {
     panel: base,
     barbero: `${base}#/barbero/${slug}`,
+    // El enlace de UN barbero: entra directo como él, sin "¿quién eres?".
+    barberoDe: (id) => `${base}#/barbero/${slug}/${id}`,
     pantalla: `${base}#/pantalla/${slug}`,
     local: `${base}#/local/${slug}`,
   }
