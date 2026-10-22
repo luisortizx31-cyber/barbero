@@ -216,7 +216,8 @@ function FilaCita({ cita: c, conFecha, estado, ahora, onEditar, onAceptar, onCan
 
   return (
     <li className={`overflow-hidden rounded-2xl border bg-panel ${vencida ? 'border-ocupada' : c.estado === 'confirmada' ? 'border-libre' : activa ? 'border-laton/60' : 'border-linea'} ${['cancelada', 'no-llego'].includes(c.estado) ? 'opacity-60' : ''}`}>
-      <button type="button" onClick={onEditar} className="flex w-full items-center gap-3 p-4 text-left">
+      {/* La tarjeta no se abre al tocarla: para editar o ver hay botón abajo. */}
+      <div className="flex w-full items-center gap-3 p-4 text-left">
         <span className="shrink-0 text-center">
           <span className="cifra block text-xl font-extrabold leading-tight text-laton">{hora12(c.hora)}</span>
           {conFecha && <span className="block text-[10px] font-bold uppercase text-tinta-suave">{c.fecha === claveDia(ahora) ? 'hoy' : formatearDia(c.fecha).split(',')[0]}</span>}
@@ -236,7 +237,7 @@ function FilaCita({ cita: c, conFecha, estado, ahora, onEditar, onAceptar, onCan
           <span className={`rounded-full px-2 py-0.5 text-[11px] font-bold ${info.clase}`}>{info.texto}</span>
           {c.origen === 'web' && <span className="rounded-full bg-panel-2 px-2 py-0.5 text-[10px] font-bold text-tinta-suave">📱 web{c.clienteId ? ' · frecuente' : ''}</span>}
         </span>
-      </button>
+      </div>
 
       {/* Qué pasó con ella */}
       {c.estado === 'atendida' && (
@@ -310,9 +311,12 @@ function FilaCita({ cita: c, conFecha, estado, ahora, onEditar, onAceptar, onCan
         </>
       )}
 
-      <div className="flex justify-end border-t border-linea px-3 py-1">
+      <div className="flex justify-end gap-1 border-t border-linea px-3 py-1">
+        <button type="button" onClick={onEditar} className="rounded-lg px-2 py-1 text-[11px] font-semibold text-tinta-suave hover:text-laton">
+          {activa ? '✏ Editar' : '📋 Ver detalle'}
+        </button>
         <button type="button" onClick={onEliminar} className="rounded-lg px-2 py-1 text-[11px] font-semibold text-tinta-suave hover:text-ocupada">
-          🗑 Eliminar cita
+          🗑 Eliminar
         </button>
       </div>
     </li>
