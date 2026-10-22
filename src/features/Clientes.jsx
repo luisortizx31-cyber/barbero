@@ -159,6 +159,15 @@ function FichaCliente({ cliente, estado, servicios, onListo }) {
   const [cortes, setCortes] = useState(cliente?.servicioIds || [])
   const [notas, setNotas] = useState(cliente?.notas || '')
   const [fotoCorte, setFotoCorte] = useState(cliente?.fotoCorte || null)
+  // Plegados (pedido del usuario, 2026-10-22): las visitas se abren con un
+  // toque; del "corte de siempre" se ven los que acostumbra y el resto se
+  // despliega. Los de siempre quedan fijos mientras la ficha está abierta
+  // (si se desmarca uno no salta a la otra lista).
+  const [verVisitas, setVerVisitas] = useState(false)
+  const [deSiempre] = useState(() => cliente?.servicioIds || [])
+  const [verOtros, setVerOtros] = useState(deSiempre.length === 0)
+  const habituales = servicios.filter((x) => deSiempre.includes(x.id) || (cortes.includes(x.id) && !verOtros))
+  const otros = servicios.filter((x) => !habituales.includes(x))
   const r = cliente ? resumenCliente(estado, cliente) : null
 
   function guardar() {
@@ -208,7 +217,26 @@ function FichaCliente({ cliente, estado, servicios, onListo }) {
       <p className="-mt-2 text-xs text-tinta-suave">Sin celular también se guarda (solo con su nombre). Con el celular de su papá o mamá, en la página de clientes se encuentran todos los de la familia.</p>
       <div>
         <p className="mb-2 text-xs font-bold uppercase tracking-wide text-tinta-suave">Su corte de siempre</p>
-        <ElegirCortes servicios={servicios} elegidos={cortes} onCambiar={setCortes} />
+        {habituales.length > 0 && <ElegirCortes servicios={habituales} elegidos={cortes} onCambiar={setCortes} />}
+        {otros.length > 0 && (
+          <>
+            {habituales.length > 0 && (
+              <button
+                type="button"
+                onClick={() => setVerOtros((v) => !v)}
+                className="mt-2 w-full rounded-xl border border-dashed border-linea py-2.5 text-sm font-bold text-tinta-suave"
+              >
+                {verOtros ? '▲ Ocultar los demás cortes' : `▼ Ver los demás cortes (${otros.length})`}
+              </button>
+            )}
+            {verOtros && (
+              <div className="mt-2">
+                <ElegirCortes servicios={otros} elegidos={cortes} onCambiar={setCortes} />
+              </div>
+            )}
+          </>
+        )}
+        {servicios.length === 0 && <ElegirCortes servicios={servicios} elegidos={cortes} onCambiar={setCortes} />}
       </div>
       {/* Foto de su corte (pedido del usuario, 2026-10-20): cómo le gusta,
           para que cualquier barbero se lo haga igual. Solo la ve el dueño. */}
@@ -232,8 +260,23 @@ function FichaCliente({ cliente, estado, servicios, onListo }) {
 
       {r && r.historial.length > 0 && (
         <div>
-          <p className="mb-2 text-xs font-bold uppercase tracking-wide text-tinta-suave">Sus visitas</p>
-          <ul className="divide-y divide-linea overflow-hidden rounded-2xl border border-linea">
+          <button
+            type="button"
+            onClick={() => setVerVisitas((v) => !v)}
+            aria-expanded={verVisitas}
+            className="flex w-full items-center justify-between gap-2 rounded-2xl border border-linea bg-fondo px-4 py-3 text-left"
+          >
+            <span>
+              <span className="block text-xs font-bold uppercase tracking-wide text-tinta-suave">Sus visitas ({r.historial.length})</span>
+              <span className="block text-sm">
+                Última: {new Date(r.historial[0].fin).toLocaleDateString('es-PE', { day: 'numeric', month: 'short' })}
+                {r.historial[0].cobro?.servicios?.length ? ` · ${r.historial[0].cobro.servicios.map((x) => x.nombre).join(' + ')}` : ''}
+              </span>
+            </span>
+            <span className="shrink-0 text-tinta-suave">{verVisitas ? '▲' : '▼'}</span>
+          </button>
+          {verVisitas && (
+          <ul className="mt-2 divide-y divide-linea overflow-hidden rounded-2xl border border-linea">
             {r.historial.slice(0, 15).map((h) => (
               <li key={h.id} className="flex items-center justify-between gap-2 px-3 py-2 text-sm">
                 <span className="min-w-0">
@@ -246,6 +289,7 @@ function FichaCliente({ cliente, estado, servicios, onListo }) {
               </li>
             ))}
           </ul>
+          )}
         </div>
       )}
 
