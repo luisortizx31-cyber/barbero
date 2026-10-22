@@ -35,6 +35,111 @@ html {
   color-scheme: dark;
 }
 
+/* ------------------------------------------------------------------
+   Temas (pedido del usuario, 2026-10-22: "los colores los veo muy
+   oscuros, que pueda elegirlos en configuración"). El dueño elige uno en
+   Ajustes y se aplica a toda su barbería (panel, televisor, barberos y
+   página de clientes) con data-tema en <html>. Sin tema: "noche", el de
+   arriba. Ver domain/temas.js para los nombres y las muestras.
+   En los claros, --color-laton es el color principal (botones) y debe
+   ser oscuro: encima va texto claro (text-fondo).
+------------------------------------------------------------------- */
+
+/* Día: crema y dorado, claro y cálido. */
+html[data-tema="dia"] {
+  --color-fondo: #f6f2ea;
+  --color-panel: #ffffff;
+  --color-panel-2: #efe9dd;
+  --color-linea: #e2d9c8;
+  --color-tinta: #1f1a14;
+  --color-tinta-suave: #6b6153;
+  --color-laton: #8a6516;
+  --color-laton-suave: #f3e7c9;
+  --color-libre: #1f8a50;
+  --color-libre-suave: #e1f3e8;
+  --color-ocupada: #c4302b;
+  --color-ocupada-suave: #fbe6e4;
+  color-scheme: light;
+}
+
+/* Control: el mismo "libro de cobranza" que Control de Autos, papel
+   con verde y dorado. */
+html[data-tema="control"] {
+  --color-fondo: #f7f5f0;
+  --color-panel: #ffffff;
+  --color-panel-2: #f0ede5;
+  --color-linea: #e4e0d6;
+  --color-tinta: #14171f;
+  --color-tinta-suave: #4b5260;
+  --color-laton: #1e4d3d;
+  --color-laton-suave: #e3ece7;
+  --color-libre: #1f7a4d;
+  --color-libre-suave: #e3f2e9;
+  --color-ocupada: #b3261e;
+  --color-ocupada-suave: #fbe8e6;
+  color-scheme: light;
+}
+
+/* Azul: claro y sobrio, azul marino. */
+html[data-tema="azul"] {
+  --color-fondo: #f3f6fa;
+  --color-panel: #ffffff;
+  --color-panel-2: #e9eef5;
+  --color-linea: #d8e0eb;
+  --color-tinta: #121a26;
+  --color-tinta-suave: #52607a;
+  --color-laton: #1f4e79;
+  --color-laton-suave: #e0eaf5;
+  --color-libre: #1c8a55;
+  --color-libre-suave: #e0f2e8;
+  --color-ocupada: #c22f36;
+  --color-ocupada-suave: #fbe5e6;
+  color-scheme: light;
+}
+
+/* Vino: claro con rojo vino, de barbería clásica. */
+html[data-tema="vino"] {
+  --color-fondo: #faf5f3;
+  --color-panel: #ffffff;
+  --color-panel-2: #f3e9e6;
+  --color-linea: #e8d9d4;
+  --color-tinta: #1e1414;
+  --color-tinta-suave: #6e5a57;
+  --color-laton: #7a1f2b;
+  --color-laton-suave: #f6e1e3;
+  --color-libre: #1f8150;
+  --color-libre-suave: #e2f2e8;
+  --color-ocupada: #c4302b;
+  --color-ocupada-suave: #fbe6e4;
+  color-scheme: light;
+}
+
+/* Grafito: oscuro pero más suave que noche, con celeste. */
+html[data-tema="grafito"] {
+  --color-fondo: #1a1f26;
+  --color-panel: #232a33;
+  --color-panel-2: #2c343f;
+  --color-linea: #3a4350;
+  --color-tinta: #eef2f6;
+  --color-tinta-suave: #a7b2c0;
+  --color-laton: #6cb4ff;
+  --color-laton-suave: #22364c;
+  --color-libre: #34c27a;
+  --color-libre-suave: #173326;
+  --color-ocupada: #ef5a5f;
+  --color-ocupada-suave: #3d1d20;
+  color-scheme: dark;
+}
+
+/* En los temas claros, las tarjetas llevan una sombra suave para que se
+   despeguen del fondo (en los oscuros no hace falta). */
+html[data-tema="dia"] .bg-panel,
+html[data-tema="control"] .bg-panel,
+html[data-tema="azul"] .bg-panel,
+html[data-tema="vino"] .bg-panel {
+  box-shadow: 0 1px 2px rgb(20 23 31 / 0.05);
+}
+
 body {
   margin: 0;
   min-height: 100svh;

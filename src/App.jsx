@@ -10,6 +10,7 @@ import { FormBarbero } from './features/Barberos'
 import { Hoja } from './ui/Hoja'
 import { BotonSalirBarberia } from './ui/SalirBarberia'
 import { irAlInicio } from './data/inicio'
+import { aplicarTema } from './domain/temas'
 import Pantalla from './features/Pantalla'
 import Citas from './features/Citas'
 import Clientes from './features/Clientes'
@@ -42,6 +43,13 @@ const CLAVE_PESTANA = 'barberia:pestana'
 export default function App() {
   const sesion = useSesion()
   const estado = useEstado()
+  // El tema de colores que eligió el dueño (Ajustes), en todas las
+  // pantallas de su barbería.
+  const tema = estado?.config?.tema
+  const hayEstado = Boolean(estado)
+  useEffect(() => {
+    if (hayEstado) aplicarTema(tema)
+  }, [tema, hayEstado])
   if (sesion.error) return <Cargando texto={sesion.error} accion={sesion.modo === 'panel' && Boolean(sesion.usuario)} alInicio={sesion.modo !== 'panel'} />
   if (sesion.modo === 'panel') {
     if (sesion.cargando && !sesion.usuario) return <Cargando texto="Abriendo…" />
@@ -152,17 +160,25 @@ function Cargando({ texto, accion, alInicio }) {
   )
 }
 
+// Panel del dueño. Dos diseños (Ajustes → Apariencia, pedido del
+// usuario, 2026-10-22):
+//   'pestanas' (el de siempre): pestañas abajo, a mano del pulgar.
+//   'iconos': como Control de Autos, un Inicio con íconos grandes; cada
+//             sección se abre entera y se vuelve con 🏠 Inicio.
 function AppBarberia() {
-  const { citas } = useEstado()
-  // `vista`: una pestaña, o una sección de "Más" (resumen, cortes...).
-  const [vista, setVista] = useState(() => {
+  const { citas, config, sillas, espera } = useEstado()
+  const conIconos = config.diseno === 'iconos'
+  // `vista`: 'inicio' (diseño con íconos), una pestaña, o una sección de
+  // "Más" (resumen, cortes...).
+  const [vistaGuardada, setVista] = useState(() => {
     try {
       const v = localStorage.getItem(CLAVE_PESTANA)
-      return v === 'historial' ? 'caja' : v || 'pantalla'
+      return v === 'historial' ? 'caja' : v || null
     } catch {
-      return 'pantalla'
+      return null
     }
   })
+  const vista = conIconos ? vistaGuardada || 'inicio' : !vistaGuardada || vistaGuardada === 'inicio' ? 'pantalla' : vistaGuardada
   const [completa, setCompleta] = useState(false)
 
   // Si se sale de pantalla completa con Esc o el botón del celular,
@@ -203,6 +219,43 @@ function AppBarberia() {
   // Citas que esperan que se acepten o rechacen (de hoy en adelante).
   const porAceptar = citas.filter((c) => c.estado === 'pendiente' && c.fecha >= claveHoy).length
 
+  const contenido =
+    vista === 'pantalla' || completa ? (
+      <Pantalla pantallaCompleta={completa} onPantallaCompleta={alternarCompleta} />
+    ) : vista === 'mas' ? (
+      <Mas onIr={ir} />
+    ) : Componente ? (
+      <Componente />
+    ) : (
+      <Pantalla pantallaCompleta={false} onPantallaCompleta={alternarCompleta} />
+    )
+
+  if (conIconos) {
+    const titulo = [...PESTANAS, ...SECCIONES_MAS].find((x) => x.id === vista)
+    return (
+      <div className="min-h-svh pb-10">
+        {vista !== 'inicio' && !completa && (
+          <header className="sticky top-0 z-30 border-b border-linea bg-fondo/95 backdrop-blur">
+            <div className="mx-auto flex max-w-6xl items-center justify-between gap-3 px-4 py-3">
+              <div className="min-w-0">
+                <p className="truncate text-[10px] font-bold uppercase tracking-[0.18em] text-tinta-suave">{config.nombre}</p>
+                <h1 className="truncate text-lg font-extrabold">
+                  {titulo?.icono} {titulo?.texto}
+                </h1>
+              </div>
+              <button type="button" onClick={() => ir('inicio')} className="flex shrink-0 items-center gap-1.5 rounded-xl border border-linea bg-panel px-3 py-2 text-sm font-semibold text-tinta-suave active:scale-95">
+                🏠 Inicio
+              </button>
+            </div>
+          </header>
+        )}
+        <main className={`mx-auto p-4 ${completa ? 'max-w-none sm:p-8' : 'max-w-6xl'}`}>
+          {vista === 'inicio' && !completa ? <InicioIconos onIr={ir} porAceptar={porAceptar} sillas={sillas} espera={espera} nombre={config.nombre} citas={citas} claveHoy={claveHoy} /> : contenido}
+        </main>
+      </div>
+    )
+  }
+
   return (
     <div className="min-h-svh pb-20">
       <main className={`mx-auto p-4 ${completa ? 'max-w-none sm:p-8' : 'max-w-6xl'}`}>
@@ -211,15 +264,7 @@ function AppBarberia() {
             ‹ Más
           </button>
         )}
-        {vista === 'pantalla' || completa ? (
-          <Pantalla pantallaCompleta={completa} onPantallaCompleta={alternarCompleta} />
-        ) : vista === 'mas' ? (
-          <Mas onIr={ir} />
-        ) : Componente ? (
-          <Componente />
-        ) : (
-          <Pantalla pantallaCompleta={false} onPantallaCompleta={alternarCompleta} />
-        )}
+        {contenido}
       </main>
 
       {/* Pestañas abajo, a mano del pulgar */}
@@ -244,6 +289,68 @@ function AppBarberia() {
           </div>
         </nav>
       )}
+    </div>
+  )
+}
+
+// Inicio del diseño con íconos: la portada con el nombre del local, cómo
+// está ahora (sillas libres, cola, citas) y todas las secciones como
+// tarjetas grandes.
+function InicioIconos({ onIr, porAceptar, sillas, espera, nombre, citas, claveHoy }) {
+  const libres = sillas.filter((s) => !s.ocupadaDesde).length
+  const citasHoy = citas.filter((c) => c.fecha === claveHoy && (c.estado === 'pendiente' || c.estado === 'confirmada')).length
+  const accesos = [
+    { id: 'pantalla', icono: '💈', texto: 'Sillas', detalle: `${libres} libres de ${sillas.length}` },
+    { id: 'citas', icono: '📅', texto: 'Citas', detalle: porAceptar ? `${porAceptar} por aceptar` : `${citasHoy} hoy`, alerta: porAceptar },
+    { id: 'clientes', icono: '👥', texto: 'Clientes', detalle: 'Tarjetas y recordatorios' },
+    { id: 'caja', icono: '💰', texto: 'Caja', detalle: 'Cobros, gastos y cierre' },
+    ...SECCIONES_MAS.map((s) => ({ ...s, detalle: '' })),
+  ]
+  return (
+    <div>
+      <div className="relative mb-6 overflow-hidden rounded-3xl bg-laton p-6 text-fondo shadow-lg">
+        <div className="pointer-events-none absolute -right-12 -top-14 h-40 w-40 rounded-full bg-fondo/10" />
+        <div className="pointer-events-none absolute -bottom-16 -left-10 h-32 w-32 rounded-full bg-fondo/5" />
+        <p className="relative text-[11px] font-bold uppercase tracking-[0.2em] opacity-75">✂ Barbería</p>
+        <h1 className="relative mt-1 text-2xl font-extrabold leading-tight">{nombre}</h1>
+        <p className="relative mt-1 text-sm opacity-80">¿Qué quieres hacer hoy?</p>
+        <div className="relative mt-4 grid grid-cols-3 gap-2 text-center">
+          {[
+            [libres, libres === 1 ? 'silla libre' : 'sillas libres'],
+            [espera.length, 'en espera'],
+            [citasHoy, citasHoy === 1 ? 'cita hoy' : 'citas hoy'],
+          ].map(([n, texto]) => (
+            <div key={texto} className="rounded-2xl bg-fondo/15 px-2 py-2">
+              <p className="cifra text-2xl font-extrabold">{n}</p>
+              <p className="text-[11px] font-semibold opacity-80">{texto}</p>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+        {accesos.map((a) => (
+          <button
+            key={a.id}
+            type="button"
+            onClick={() => onIr(a.id)}
+            className="relative flex flex-col items-start gap-1.5 rounded-2xl border border-linea bg-panel p-4 text-left transition-transform active:scale-[0.98]"
+          >
+            <span className="flex h-8 items-center text-2xl">{a.icono}</span>
+            <span className="text-sm font-bold">{a.texto}</span>
+            {a.detalle && <span className={`text-xs ${a.alerta ? 'font-bold text-ocupada' : 'text-tinta-suave'}`}>{a.detalle}</span>}
+            {a.alerta > 0 && <span className="absolute right-3 top-3 rounded-full bg-ocupada px-2 text-xs font-bold leading-5 text-white">{a.alerta}</span>}
+          </button>
+        ))}
+      </div>
+
+      <button
+        type="button"
+        onClick={() => confirm('¿Salir de la cuenta en este equipo? Los datos quedan guardados en la nube.') && salir()}
+        className="mt-6 w-full rounded-2xl border border-linea py-3 text-sm font-semibold text-tinta-suave"
+      >
+        ⏏ Salir de la cuenta
+      </button>
     </div>
   )
 }

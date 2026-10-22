@@ -13,6 +13,18 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <meta name="apple-mobile-web-app-title" content="Barbería" />
     <script>
+      // El tema de colores de la barbería (ver domain/temas.js), antes de
+      // pintar nada, para que no se vea un instante con otro.
+      ;(function () {
+        try {
+          var tema = localStorage.getItem('barberia:tema')
+          if (tema && tema !== 'noche') document.documentElement.dataset.tema = tema
+        } catch (e) {
+          // sin localStorage, abre con el tema de siempre
+        }
+      })()
+    </script>
+    <script>
       // La app instalada abre siempre en "./" (sin #). Para que el cliente
       // vuelva a la página de su barbería, el barbero a la suya y el dueño
       // a su panel, se recuerda la última dirección y, abierta como app,

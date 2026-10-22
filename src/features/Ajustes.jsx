@@ -3,6 +3,7 @@ import { useEstado, useSesion, guardarConfig, exportarCopia, importarCopia, peso
 import { claveDia } from '../domain/hora'
 import { enlaces } from '../data/plataforma'
 import { BotonInstalar } from '../ui/Instalar'
+import { TEMAS, TEMA_INICIAL } from '../domain/temas'
 import { HORARIO_INICIAL, NOMBRES_DIAS } from '../domain/horario'
 
 // Ajustes del local: nombre, comisión de los barberos, tarjeta de
@@ -75,6 +76,7 @@ export default function Ajustes() {
   return (
     <div className="space-y-5">
       <BotonInstalar />
+      <Apariencia config={config} />
       <form onSubmit={guardar} className="space-y-4">
         <Bloque titulo="Barbería">
           <Etiqueta texto="Nombre de la barbería">
@@ -217,6 +219,113 @@ export default function Ajustes() {
 }
 
 const CLASE_INPUT = 'w-full rounded-xl border border-linea bg-fondo px-3 py-2.5 text-tinta outline-none focus-visible:border-laton'
+
+// Cómo se ve la barbería (pedido del usuario, 2026-10-22: "los colores
+// los veo muy oscuros, que pueda elegirlos, y una opción para que se vea
+// como Control de Autos con los íconos"). Se guarda al tocar, sin
+// "Guardar", y se ve el cambio al instante. El tema es de toda la
+// barbería (panel, televisor, barberos y clientes); el diseño, del panel.
+function Apariencia({ config }) {
+  const tema = config.tema || TEMA_INICIAL
+  const diseno = config.diseno || 'pestanas'
+  return (
+    <Bloque titulo="🎨 Apariencia">
+      <div>
+        <p className="mb-2 text-xs font-bold uppercase tracking-wide text-tinta-suave">Colores</p>
+        <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+          {TEMAS.map((t) => {
+            const [fondo, tarjeta, principal, texto] = t.muestra
+            const activo = tema === t.id
+            return (
+              <button
+                key={t.id}
+                type="button"
+                onClick={() => guardarConfig({ tema: t.id })}
+                aria-pressed={activo}
+                className={`overflow-hidden rounded-2xl border-2 text-left transition-transform active:scale-[0.98] ${activo ? 'border-laton ring-2 ring-laton/40' : 'border-linea'}`}
+              >
+                {/* Miniatura: fondo, una tarjeta y un botón del color principal */}
+                <span className="block p-2.5" style={{ background: fondo }}>
+                  <span className="block rounded-lg p-2" style={{ background: tarjeta, boxShadow: '0 1px 2px rgb(0 0 0 / 0.12)' }}>
+                    <span className="mb-1.5 block h-1.5 w-2/3 rounded-full" style={{ background: texto, opacity: 0.8 }} />
+                    <span className="mb-2 flex gap-1">
+                      <span className="h-2.5 w-2.5 rounded-full" style={{ background: '#2fbf71' }} />
+                      <span className="h-2.5 w-2.5 rounded-full" style={{ background: '#e5484d' }} />
+                    </span>
+                    <span className="block h-4 rounded-md" style={{ background: principal }} />
+                  </span>
+                </span>
+                <span className="block bg-panel px-2.5 py-2">
+                  <span className="block text-sm font-extrabold">
+                    {activo ? '✓ ' : ''}
+                    {t.nombre}
+                  </span>
+                  <span className="block text-[11px] leading-tight text-tinta-suave">{t.detalle}</span>
+                </span>
+              </button>
+            )
+          })}
+        </div>
+        <p className="mt-2 text-xs text-tinta-suave">Se ve igual en tu panel, el televisor, los celulares de los barberos y la página de clientes.</p>
+      </div>
+
+      <div>
+        <p className="mb-2 text-xs font-bold uppercase tracking-wide text-tinta-suave">Diseño del panel</p>
+        <div className="grid grid-cols-2 gap-2">
+          {[
+            { id: 'pestanas', nombre: 'Pestañas abajo', detalle: 'Las secciones siempre a mano, abajo' },
+            { id: 'iconos', nombre: 'Inicio con íconos', detalle: 'Como Control de Autos: un inicio con íconos grandes' },
+          ].map((d) => {
+            const activo = diseno === d.id
+            return (
+              <button
+                key={d.id}
+                type="button"
+                onClick={() => guardarConfig({ diseno: d.id })}
+                aria-pressed={activo}
+                className={`overflow-hidden rounded-2xl border-2 text-left transition-transform active:scale-[0.98] ${activo ? 'border-laton ring-2 ring-laton/40' : 'border-linea'}`}
+              >
+                {/* Miniatura del diseño */}
+                <span className="flex h-24 flex-col bg-fondo p-2">
+                  {d.id === 'iconos' ? (
+                    <>
+                      <span className="mb-1.5 block h-5 rounded-md bg-laton" />
+                      <span className="grid flex-1 grid-cols-3 gap-1">
+                        {Array.from({ length: 6 }, (_, i) => (
+                          <span key={i} className="rounded border border-linea bg-panel" />
+                        ))}
+                      </span>
+                    </>
+                  ) : (
+                    <>
+                      <span className="grid flex-1 grid-cols-2 gap-1">
+                        {Array.from({ length: 4 }, (_, i) => (
+                          <span key={i} className="rounded border border-linea bg-panel" />
+                        ))}
+                      </span>
+                      <span className="mt-1.5 flex justify-around rounded-md border border-linea bg-panel py-1">
+                        {Array.from({ length: 5 }, (_, i) => (
+                          <span key={i} className={`h-2 w-2 rounded-full ${i === 0 ? 'bg-laton' : 'bg-linea'}`} />
+                        ))}
+                      </span>
+                    </>
+                  )}
+                </span>
+                <span className="block bg-panel px-2.5 py-2">
+                  <span className="block text-sm font-extrabold">
+                    {activo ? '✓ ' : ''}
+                    {d.nombre}
+                  </span>
+                  <span className="block text-[11px] leading-tight text-tinta-suave">{d.detalle}</span>
+                </span>
+              </button>
+            )
+          })}
+        </div>
+      </div>
+    </Bloque>
+  )
+}
 
 function Bloque({ titulo, children }) {
   return (
