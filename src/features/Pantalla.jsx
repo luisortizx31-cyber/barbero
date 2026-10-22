@@ -8,7 +8,7 @@ import { Hoja } from '../ui/Hoja'
 import { HojaOcupar, HojaCobrar, ElegirCliente, ElegirCortes } from '../ui/Cobro'
 import { FotoBarbero } from '../ui/FotoBarbero'
 import { barberoDeSilla } from '../domain/sillas'
-import { ESTADOS_ACTIVOS, momentoCita, esperaHasta } from '../domain/citas'
+import { ESTADOS_ACTIVOS, momentoCita, esperaHasta, sillaParaCita } from '../domain/citas'
 import { ElegirBarbero } from '../ui/ElegirBarbero'
 
 // La pantalla del local: todas las sillas, cuáles están ocupadas (desde
@@ -30,8 +30,9 @@ function hora12(hhmm) {
   return formatearHora(new Date(msDeHora(hhmm)).toISOString())
 }
 
-// `soloVer`: el televisor (sin botones). `conCitas`: los barberos y el
-// televisor entran sin cuenta y no ven las citas (tienen celulares).
+// `soloVer`: el televisor (sin botones). `conCitas`: el dueño, que lee
+// las citas; los barberos y el televisor entran sin cuenta y ven la
+// agenda pública (nombre corto, sin celular).
 // `enCompleta`: si de verdad está en pantalla completa (el televisor se
 // ve en grande aunque no lo esté).
 // `barberoYo`: en el enlace de los barberos, el barbero que está usando
@@ -41,7 +42,7 @@ export default function Pantalla({ pantallaCompleta, onPantallaCompleta, soloVer
   const { config, sillas, servicios, clientes, espera, historial, productos, barberos } = estado
   const ahora = useAhora(1000)
   const [deshacer, setDeshacer] = useState(null) // { texto, anterior }
-  const [hoja, setHoja] = useState(null) // { tipo: 'ocupar' | 'cobrar' | 'espera', sillaId }
+  const [hoja, setHoja] = useState(null) // { tipo: 'ocupar' | 'cobrar' | 'espera', sillaId, citaId }
   const sillaHoja = hoja?.sillaId && sillas.find((s) => s.id === hoja.sillaId)
   const temporizador = useRef(null)
 
@@ -75,10 +76,10 @@ export default function Pantalla({ pantallaCompleta, onPantallaCompleta, soloVer
 
   // Citas de hoy que todavía no llegan (las de hace más de 1 h ya no).
   const hoy = claveDia()
-  // El dueño ve sus citas (con nombres); el televisor y los barberos, sin
-  // cuenta, solo la agenda pública (sin nombres) - igual les alcanza para
-  // mostrar qué silla está reservada.
-  const fuenteCitas = conCitas ? estado.citas : estado.agenda.map((a) => ({ ...a, nombre: '', estado: a.confirmada ? 'confirmada' : 'pendiente' }))
+  // El dueño ve sus citas; el televisor y los barberos, sin cuenta, la
+  // agenda pública (nombre corto "Luis O.", sin celular): les alcanza para
+  // ver qué silla está reservada y sentar al cliente con su cita.
+  const fuenteCitas = conCitas ? estado.citas : estado.agenda.map((a) => ({ ...a, nombre: a.nombre || '', estado: a.confirmada ? 'confirmada' : 'pendiente' }))
   const citasHoy = fuenteCitas
     .filter((c) => c.fecha === hoy && ESTADOS_ACTIVOS.includes(c.estado) && momentoCita(c, config, ahora) !== 'vencida')
     .sort((a, b) => a.hora.localeCompare(b.hora))
@@ -90,7 +91,14 @@ export default function Pantalla({ pantallaCompleta, onPantallaCompleta, soloVer
     const suyas = citasHoy.filter((c) => esDeSilla(c, id) && msDeHora(c.hora) < ahora + 120 * 60000)
     return suyas.find((c) => c.estado === 'confirmada') || suyas[0]
   }
-  const citasParaOcupar = (id) => citasHoy.filter((c) => (!c.sillaId && !c.barberoId) || esDeSilla(c, id) || (c.barberoId && !tieneSilla(c.barberoId)))
+  const citasParaOcupar = (id, citaId) => citasHoy.filter((c) => c.id === citaId || (!c.sillaId && !c.barberoId) || esDeSilla(c, id) || (c.barberoId && !tieneSilla(c.barberoId)))
+  // Llegó el cliente de una cita: se sienta en su silla (o la de su
+  // barbero, o cualquiera libre) con su cita ya elegida.
+  function llegoCita(c) {
+    const silla = sillaParaCita(c, sillas)
+    if (!silla) return alert('No hay ninguna silla libre ahora. Cuando se libere una, tócala y elige su cita.')
+    setHoja({ tipo: 'ocupar', sillaId: silla.id, citaId: c.id })
+  }
 
   return (
     <div>
@@ -154,7 +162,11 @@ export default function Pantalla({ pantallaCompleta, onPantallaCompleta, soloVer
               config={config}
               soloVer={soloVer}
               barbero={barberos.find((b) => b.id === barberoDeSilla(s))}
-              onOcupar={() => setHoja({ tipo: 'ocupar', sillaId: s.id })}
+              onOcupar={() => {
+                // Silla reservada ahora para una cita: de entrada, esa cita.
+                const c = citaDeSilla(s.id)
+                setHoja({ tipo: 'ocupar', sillaId: s.id, citaId: c?.estado === 'confirmada' && momentoCita(c, config, ahora) === 'ahora' ? c.id : null })
+              }}
               onLiberar={() => setHoja({ tipo: 'cobrar', sillaId: s.id })}
             />
           ))}
@@ -162,7 +174,7 @@ export default function Pantalla({ pantallaCompleta, onPantallaCompleta, soloVer
       )}
 
       {/* Cola de espera y citas de hoy */}
-      <div className={`mt-5 grid gap-4 ${conCitas ? 'md:grid-cols-2' : ''}`}>
+      <div className="mt-5 grid gap-4 md:grid-cols-2">
         <div className="overflow-hidden rounded-3xl border border-linea bg-panel">
           <div className="flex items-center justify-between gap-2 border-b border-linea px-4 py-3">
             <p className={`font-extrabold ${pantallaCompleta ? 'text-2xl' : 'text-base'}`}>⏳ En espera ({espera.length})</p>
@@ -213,7 +225,6 @@ export default function Pantalla({ pantallaCompleta, onPantallaCompleta, soloVer
           )}
         </div>
 
-        {conCitas && (
         <div className="overflow-hidden rounded-3xl border border-linea bg-panel">
           <p className={`border-b border-linea px-4 py-3 font-extrabold ${pantallaCompleta ? 'text-2xl' : 'text-base'}`}>📅 Citas de hoy ({citasHoy.length})</p>
           {citasHoy.length === 0 ? (
@@ -224,18 +235,24 @@ export default function Pantalla({ pantallaCompleta, onPantallaCompleta, soloVer
                 <li key={c.id} className="flex items-center gap-3 px-4 py-3">
                   <span className={`cifra shrink-0 font-extrabold text-laton ${pantallaCompleta ? 'text-2xl' : ''}`}>{hora12(c.hora)}</span>
                   <span className="min-w-0 flex-1">
-                    <span className={`block truncate font-bold ${pantallaCompleta ? 'text-2xl' : ''}`}>{c.nombre}</span>
+                    <span className={`block truncate font-bold ${pantallaCompleta ? 'text-2xl' : ''}`}>{c.nombre || 'Cliente con cita'}</span>
                     <span className="block truncate text-xs text-tinta-suave">
+                      {c.estado === 'confirmada' ? '✓ ' : '⏳ Por aceptar · '}
                       {c.sillaId ? sillas.find((s) => s.id === c.sillaId)?.nombre || '' : 'Cualquier silla'}
+                      {c.barberoId ? ` · con ${nombreBarbero(c.barberoId).split(' ')[0]}` : ''}
                       {c.servicioIds?.length ? ` · ${servicios.filter((s) => c.servicioIds.includes(s.id)).map((s) => s.nombre).join(' + ')}` : ''}
                     </span>
                   </span>
+                  {!soloVer && !pantallaCompleta && (
+                    <button type="button" onClick={() => llegoCita(c)} className="shrink-0 rounded-xl bg-libre px-3 py-2 text-xs font-bold text-white">
+                      ✂ Llegó
+                    </button>
+                  )}
                 </li>
               ))}
             </ul>
           )}
         </div>
-        )}
       </div>
 
       <div className="mt-5 flex justify-center">
@@ -252,9 +269,10 @@ export default function Pantalla({ pantallaCompleta, onPantallaCompleta, soloVer
             servicios={servicios}
             clientes={clientes}
             espera={espera}
-            citas={conCitas ? citasParaOcupar(sillaHoja.id) : []}
+            citas={citasParaOcupar(sillaHoja.id, hoja.citaId)}
             barberos={barberos}
-            barberoInicial={barberoYo || sillaHoja.barberoFijoId || null}
+            citaInicial={hoja.citaId || null}
+            barberoInicial={barberoYo || citasHoy.find((c) => c.id === hoja.citaId)?.barberoId || sillaHoja.barberoFijoId || null}
             onOcupar={(datos) => {
               accion(`${sillaHoja.nombre} ocupada${datos.nombre ? ` · ${datos.nombre}` : ''}`, () => ocuparSilla(sillaHoja.id, datos))
               setHoja(null)

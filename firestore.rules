@@ -75,9 +75,14 @@ service cloud.firestore {
 
       // Citas: el cliente la reserva desde la página de clientes (sin
       // cuenta) - solo puede CREARLA, pendiente y marcada "web"; verla,
-      // cambiarla o borrarla es del dueño (tiene su celular).
+      // cambiarla o borrarla es del dueño (tiene su celular). Lo único
+      // que se cambia sin cuenta: el barbero sienta al cliente que llegó
+      // con su cita, que pasa de pendiente/aceptada a atendida.
       match /citas/{id} {
-        allow read, update, delete: if esDuenoDe(barberiaId);
+        allow read, delete: if esDuenoDe(barberiaId);
+        allow update: if esDuenoDe(barberiaId)
+          || (resource.data.estado in ['pendiente', 'confirmada'] && request.resource.data.estado == 'atendida'
+              && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['estado', 'atendidaEn', 'sillaId', 'barberoId']));
         allow create: if esDuenoDe(barberiaId)
           || (request.resource.data.id == id && request.resource.data.estado == 'pendiente' && request.resource.data.origen == 'web'
               && request.resource.data.nombre is string && request.resource.data.nombre.size() > 0 && request.resource.data.nombre.size() <= 80
@@ -85,13 +90,15 @@ service cloud.firestore {
               && (request.resource.data.get('clienteId', null) == null || request.resource.data.clienteId is string));
       }
 
-      // Agenda: la parte pública de las citas (día, hora, duración y
-      // barbero, sin datos de nadie), para mostrar las horas libres.
+      // Agenda: la parte pública de las citas (día, hora, duración,
+      // barbero, silla, nombre corto "Luis O.", su ficha y sus cortes; sin
+      // celular), para mostrar las horas libres y que el televisor y los
+      // barberos vean de quién es cada cita y lo sienten con ella.
       match /agenda/{id} {
         allow read: if true;
         allow create: if esDuenoDe(barberiaId)
           || (request.resource.data.id == id
-              && request.resource.data.keys().hasOnly(['id', 'fecha', 'hora', 'duracion', 'barberoId', 'sillaId', 'confirmada'])
+              && request.resource.data.keys().hasOnly(['id', 'fecha', 'hora', 'duracion', 'barberoId', 'sillaId', 'confirmada', 'nombre', 'clienteId', 'servicioIds'])
               && request.resource.data.get('confirmada', false) == false);
         allow update, delete: if esDuenoDe(barberiaId);
       }

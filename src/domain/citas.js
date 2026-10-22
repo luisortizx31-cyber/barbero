@@ -1,4 +1,4 @@
-import { hora12 } from './horario'
+import { hora12, seCruzan } from './horario'
 
 // Tiempos de una cita (pedido del usuario, 2026-10-18): al cliente se le
 // espera como máximo `tolerancia` minutos (Ajustes, 15 por defecto);
@@ -31,4 +31,33 @@ export function momentoCita(c, config, ahora = Date.now()) {
   if (ahora > inicio + tolerancia(config) * 60000) return 'vencida'
   if (ahora >= inicio - RESERVA_ANTES * 60000) return 'ahora'
   return 'luego'
+}
+
+// Cómo sale el nombre del cliente en lo público (agenda, televisor,
+// barberos): nombre y la inicial del apellido, "Luis O.".
+export function nombreCorto(nombre) {
+  const partes = String(nombre || '').trim().split(/\s+/).filter(Boolean)
+  if (!partes.length) return ''
+  const primero = partes[0][0].toUpperCase() + partes[0].slice(1)
+  return partes.length > 1 ? `${primero} ${partes[1][0].toUpperCase()}.` : primero
+}
+
+// Otra cita aceptada en esa silla que se cruza con esta hora (para no
+// reservar dos citas en la misma silla a la vez), o null.
+export function citaEnSilla(citas, sillaId, { fecha, hora, duracion, id = null }) {
+  return (
+    citas.find((c) => c.id !== id && c.estado === 'confirmada' && c.sillaId === sillaId && c.fecha === fecha && seCruzan(c.hora, c.duracion, hora, duracion)) || null
+  )
+}
+
+// La silla donde conviene sentar a una cita que llegó: la que tiene
+// asignada si está libre; si no, la de su barbero; si no, cualquiera libre.
+export function sillaParaCita(cita, sillas) {
+  const libres = sillas.filter((s) => !s.ocupadaDesde)
+  return (
+    libres.find((s) => s.id === cita.sillaId) ||
+    libres.find((s) => cita.barberoId && s.barberoFijoId === cita.barberoId) ||
+    libres[0] ||
+    null
+  )
 }

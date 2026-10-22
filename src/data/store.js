@@ -1,7 +1,8 @@
 import { useSyncExternalStore } from 'react'
 import { onAuthStateChanged, signInWithEmailAndPassword, sendPasswordResetEmail, signOut } from 'firebase/auth'
 import { auth } from './firebase'
-import { escucharBarberia, guardarCambios, COLECCIONES_PUBLICAS } from './nube'
+import { escucharBarberia, guardarCambios, marcarCitaAtendida, COLECCIONES_PUBLICAS } from './nube'
+import { nombreCorto } from '../domain/citas'
 import { SUPER_UID, obtenerPerfil } from './plataforma'
 import { HORARIO_INICIAL, bloquesDe, carrilLibre } from '../domain/horario'
 import { digitosCelular, huellaCelular, fidelidad } from '../domain/clientes'
@@ -309,23 +310,35 @@ export function ocuparSilla(id, { servicioIds = [], clienteId = null, nombre = '
     alert(`${nombre || 'Ese cliente'} ya se está cortando en ${sentado.nombre}. Libérala primero.`)
     return false
   }
+  const ahora = new Date().toISOString()
   fijar({
     ...estado,
     sillas: estado.sillas.map((s) =>
       s.id === id
         ? {
             ...s,
-            ocupadaDesde: new Date().toISOString(),
+            ocupadaDesde: ahora,
             clienteId,
             cliente: nombre.trim(),
             servicioIds,
+            // Si venía con cita: la silla la recuerda y al cobrar queda en
+            // el historial (así la cita muestra lo que se cobró).
+            citaId: citaId || null,
             ...(barbero ? { barberoId: barbero.id, barbero: barbero.nombre } : {}),
           }
         : s
     ),
     espera: esperaId ? estado.espera.filter((x) => x.id !== esperaId) : estado.espera,
-    ...(citaId ? conCitas(estado.citas.map((c) => (c.id === citaId ? { ...c, estado: 'atendida' } : c))) : {}),
+    // La cita queda atendida, con la silla y el barbero que la atendieron.
+    ...(citaId && estado.citas.some((c) => c.id === citaId)
+      ? conCitas(estado.citas.map((c) => (c.id === citaId ? { ...c, estado: 'atendida', atendidaEn: ahora, sillaId: id, barberoId: barbero?.id || c.barberoId || null } : c)))
+      : {}),
   })
+  // Sin cuenta (el enlace de los barberos) las citas no se leen: se marca
+  // atendida directo en la nube.
+  if (citaId && sesion.rol !== 'dueno' && barberiaId) {
+    marcarCitaAtendida(barberiaId, citaId, { sillaId: id, barberoId: barbero?.id || null }).catch((err) => console.error('[store] marcarCitaAtendida', err))
+  }
 }
 
 // `cobro`: ver arriba, o null para liberarla sin cobrar. Queda en el
@@ -347,6 +360,7 @@ export function liberarSilla(id, cobro = null) {
             clienteId: null,
             cliente: '',
             servicioIds: [],
+            citaId: null,
             // El que cortó se va de la silla (su nombre ya quedó en el historial).
             barberoId: null,
             ...(s.barberoId ? { barbero: '' } : {}),
@@ -364,6 +378,7 @@ export function liberarSilla(id, cobro = null) {
         fin,
         clienteId: silla.clienteId || null,
         cliente: silla.cliente || '',
+        citaId: silla.citaId || null,
         cobro: cobroFinal,
       },
     ].slice(-5000),
@@ -505,9 +520,15 @@ function agendaDe(citas, agendaActual = []) {
         sillaId: c.sillaId || null,
         // Aceptada por la barbería: su silla sale "Reservada" a esa hora.
         confirmada: c.estado === 'confirmada',
+        // Para que el televisor y los barberos (sin cuenta) vean de quién
+        // es y lo puedan sentar con su cita: nombre corto ("Luis O."), su
+        // ficha y sus cortes. Sin celular ni nada más.
+        nombre: nombreCorto(c.nombre),
+        clienteId: c.clienteId || null,
+        servicioIds: c.servicioIds || [],
       }
       const viejo = actual.get(c.id)
-      return viejo && Object.keys(nuevo).every((k) => viejo[k] === nuevo[k]) ? viejo : nuevo
+      return igualQue(viejo, nuevo) ? viejo : nuevo
     })
 }
 
@@ -608,8 +629,14 @@ export function guardarCita(id, datos) {
   fijar({ ...estado, ...conCitas(citas) })
 }
 
-export function cambiarEstadoCita(id, nuevoEstado) {
-  fijar({ ...estado, ...conCitas(estado.citas.map((c) => (c.id === id ? { ...c, estado: nuevoEstado } : c))) })
+export function cambiarEstadoCita(id, nuevoEstado, extra = {}) {
+  fijar({ ...estado, ...conCitas(estado.citas.map((c) => (c.id === id ? { ...c, ...extra, estado: nuevoEstado } : c))) })
+}
+
+// Cancelar (o rechazar, si todavía no se había aceptado) con el motivo,
+// para que quede anotado y se le pueda avisar al cliente.
+export function cancelarCita(id, motivo = '') {
+  cambiarEstadoCita(id, 'cancelada', { motivo: motivo.trim(), canceladaEn: new Date().toISOString() })
 }
 
 // La barbería acepta la cita y le asigna su silla: desde ese momento la
@@ -644,7 +671,7 @@ export async function reservarCitaWeb({ fecha, hora, duracion, barberoId, servic
     origen: 'web',
     creadaEn: new Date().toISOString(),
   }
-  const lugar = { id: cita.id, fecha, hora, duracion: cita.duracion, barberoId: cita.barberoId, sillaId: null }
+  const lugar = { id: cita.id, fecha, hora, duracion: cita.duracion, barberoId: cita.barberoId, sillaId: null, nombre: nombreCorto(cita.nombre), clienteId: cita.clienteId, servicioIds: cita.servicioIds || [] }
   const bloqueos = bloquesDe(fecha, hora, cita.duracion).map((b) => ({ id: `${b}_${carril}`, citaId: cita.id, carril }))
   try {
     await fijar({ ...estado, citas: [...estado.citas, cita], agenda: [...estado.agenda, lugar], bloqueos: [...estado.bloqueos, ...bloqueos] }, { avisarError: false })

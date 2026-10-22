@@ -200,7 +200,8 @@ function AppBarberia() {
   const Componente = PANTALLAS[vista]
   const hoy = new Date()
   const claveHoy = `${hoy.getFullYear()}-${String(hoy.getMonth() + 1).padStart(2, '0')}-${String(hoy.getDate()).padStart(2, '0')}`
-  const citasHoy = citas.filter((c) => c.fecha === claveHoy && (c.estado === 'pendiente' || c.estado === 'confirmada')).length
+  // Citas que esperan que se acepten o rechacen (de hoy en adelante).
+  const porAceptar = citas.filter((c) => c.estado === 'pendiente' && c.fecha >= claveHoy).length
 
   return (
     <div className="min-h-svh pb-20">
@@ -235,8 +236,8 @@ function AppBarberia() {
               >
                 <span className="text-xl leading-none">{p.icono}</span>
                 {p.texto}
-                {p.id === 'citas' && citasHoy > 0 && (
-                  <span className="absolute right-[22%] top-1 rounded-full bg-ocupada px-1.5 text-[10px] leading-4 text-white">{citasHoy}</span>
+                {p.id === 'citas' && porAceptar > 0 && (
+                  <span className="absolute right-[22%] top-1 rounded-full bg-ocupada px-1.5 text-[10px] leading-4 text-white">{porAceptar}</span>
                 )}
               </button>
             ))}

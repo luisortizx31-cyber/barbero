@@ -1,4 +1,4 @@
-import { doc, collection, onSnapshot, writeBatch } from 'firebase/firestore'
+import { doc, collection, onSnapshot, writeBatch, updateDoc } from 'firebase/firestore'
 import { db } from './firebase'
 
 // Cómo se guarda cada barbería en Firestore (multitenant, igual que las
@@ -125,4 +125,17 @@ export async function guardarCambios(id, antes, despues, { publico = false } = {
     operaciones.slice(i, i + 400).forEach((op) => op(b))
     await b.commit()
   }
+}
+
+// Un barbero (sin cuenta) sentó a un cliente que tenía cita: la cita
+// pasa a "atendida". Sin cuenta las citas no se leen, así que no se
+// puede reescribir entera: solo se cambian estos campos (ver la regla
+// de citas en firestore.rules).
+export function marcarCitaAtendida(barberiaId, citaId, { sillaId, barberoId }) {
+  return updateDoc(doc(db, 'barberias', barberiaId, 'citas', citaId), {
+    estado: 'atendida',
+    atendidaEn: new Date().toISOString(),
+    sillaId: sillaId || null,
+    barberoId: barberoId || null,
+  })
 }

@@ -5,6 +5,7 @@ import { fidelidad } from '../domain/clientes'
 import { totalProductos } from '../domain/caja'
 import { FotoBarbero } from './FotoBarbero'
 import { FotoCorte } from './FotoCorte'
+import { hora12 } from '../domain/horario'
 
 // Los cortes del local como botones para marcar (se puede elegir más
 // de uno, por ejemplo corte + cejas).
@@ -95,7 +96,8 @@ export function ElegirCliente({ clientes, valor, onCambiar, placeholder = 'Nombr
 
 // Al ocupar: quién se sienta (el siguiente de la cola, alguien con
 // cita, un cliente frecuente o uno de paso) y qué corte se va a hacer.
-export function HojaOcupar({ silla, sillas: sillasTodas = [], servicios, clientes, espera, citas, barberos = [], barberoInicial = null, onOcupar }) {
+// `citaInicial`: id de la cita que llegó (se elige de entrada).
+export function HojaOcupar({ silla, sillas: sillasTodas = [], servicios, clientes, espera, citas, barberos = [], barberoInicial = null, citaInicial = null, onOcupar }) {
   const primerNombre = (id) => barberos.find((b) => b.id === id)?.nombre.split(' ')[0] || ''
   const opciones = [
     ...espera.map((x, i) => ({
@@ -109,7 +111,7 @@ export function HojaOcupar({ silla, sillas: sillasTodas = [], servicios, cliente
     })),
     ...citas.map((c) => ({
       clave: `c-${c.id}`,
-      etiqueta: `📅 ${c.hora} ${c.nombre}${c.barberoId ? ` (con ${primerNombre(c.barberoId)})` : ''}`,
+      etiqueta: `📅 ${hora12(c.hora)} ${c.nombre || 'Cliente con cita'}${c.barberoId ? ` (con ${primerNombre(c.barberoId)})` : ''}`,
       nombre: c.nombre,
       clienteId: c.clienteId,
       servicioIds: c.servicioIds,
@@ -127,7 +129,9 @@ export function HojaOcupar({ silla, sillas: sillasTodas = [], servicios, cliente
   // De entrada, el primero que puede sentarse en ESTA silla (sin
   // preferencia, o que quiere al barbero de esta silla).
   const puedenSentarse = opciones.filter((o) => !yaSentado(o))
-  const inicial = puedenSentarse.find((o) => !o.barberoId || o.barberoId === silla.barberoFijoId) ?? puedenSentarse[0]
+  const inicial =
+    (citaInicial && puedenSentarse.find((o) => o.citaId === citaInicial)) ||
+    (puedenSentarse.find((o) => !o.barberoId || o.barberoId === silla.barberoFijoId) ?? puedenSentarse[0])
   const [elegida, setElegida] = useState(inicial?.clave ?? null)
   // Dónde está cortando cada barbero ahora (no se puede elegir a uno que
   // ya está cortando en otra silla).
