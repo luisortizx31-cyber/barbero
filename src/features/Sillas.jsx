@@ -2,6 +2,8 @@ import { useRef, useState } from 'react'
 import { useEstado, agregarSilla, guardarSilla, eliminarSilla, moverSilla, guardarConfig, COLORES } from '../data/store'
 import { achicarFoto } from '../domain/foto'
 import { SillaImagen } from '../ui/SillaDibujo'
+import { Aviso } from '../ui/Aviso'
+import { useAviso } from '../ui/useAviso'
 
 // Las sillas del local: cuántas hay, su nombre, el barbero que la usa
 // y cómo se ven en la pantalla - un dibujo del color de la silla, o la
@@ -9,6 +11,15 @@ import { SillaImagen } from '../ui/SillaDibujo'
 export default function Sillas() {
   const { config, sillas, barberos } = useEstado()
   const [nombreLocal, setNombreLocal] = useState(config.nombre)
+  // "✓ Silla agregada" (pedido del usuario, 2026-10-22); la nueva queda
+  // resaltada y se baja hasta ella.
+  const { aviso, avisar, resaltado } = useAviso()
+
+  function agregar() {
+    const nueva = agregarSilla()
+    avisar(`✓ Silla agregada: ${nueva.nombre}`, nueva.id)
+    setTimeout(() => document.getElementById(`silla-${nueva.id}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 100)
+  }
 
   return (
     <div className="space-y-5">
@@ -37,21 +48,22 @@ export default function Sillas() {
         <h2 className="text-lg font-extrabold">
           Sillas del local <span className="text-tinta-suave">({sillas.length})</span>
         </h2>
-        <button type="button" onClick={agregarSilla} className="rounded-xl bg-laton px-4 py-2.5 text-sm font-bold text-fondo">
+        <button type="button" onClick={agregar} className="rounded-xl bg-laton px-4 py-2.5 text-sm font-bold text-fondo">
           + Agregar silla
         </button>
       </div>
 
       <ul className="space-y-3">
         {sillas.map((s, i) => (
-          <EditorSilla key={s.id} silla={s} barberos={barberos} primera={i === 0} ultima={i === sillas.length - 1} />
+          <EditorSilla key={s.id} silla={s} barberos={barberos} primera={i === 0} ultima={i === sillas.length - 1} nueva={s.id === resaltado} />
         ))}
       </ul>
+      <Aviso aviso={aviso} />
     </div>
   )
 }
 
-function EditorSilla({ silla, barberos, primera, ultima }) {
+function EditorSilla({ silla, barberos, primera, ultima, nueva = false }) {
   const [nombre, setNombre] = useState(silla.nombre)
   const [barbero, setBarbero] = useState(silla.barbero)
   const [subiendo, setSubiendo] = useState(false)
@@ -74,7 +86,7 @@ function EditorSilla({ silla, barberos, primera, ultima }) {
   }
 
   return (
-    <li className="rounded-2xl border border-linea bg-panel p-4">
+    <li id={`silla-${silla.id}`} className={`rounded-2xl border p-4 transition-colors duration-700 ${nueva ? 'border-libre bg-libre-suave' : 'border-linea bg-panel'}`}>
       <div className="flex gap-4">
         <div className="h-28 w-28 shrink-0 overflow-hidden rounded-2xl bg-panel-2">
           <SillaImagen silla={silla} className="h-full w-full p-1" />

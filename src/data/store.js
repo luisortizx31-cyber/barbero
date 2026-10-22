@@ -703,7 +703,7 @@ export function eliminarServicio(id) {
 export function guardarProducto(id, datos) {
   const limpio = { ...datos, precio: Number(datos.precio) || 0, stock: datos.stock === '' || datos.stock == null ? null : Math.max(0, Number(datos.stock) || 0) }
   if (id) cambiarEn('productos', id, limpio)
-  else agregarEn('productos', limpio)
+  else return agregarEn('productos', limpio)
 }
 
 export function eliminarProducto(id) {
@@ -758,7 +758,9 @@ export function reabrirCaja(dia) {
 // --- Sillas del local -------------------------------------------------------
 
 export function agregarSilla() {
-  fijar({ ...estado, sillas: [...estado.sillas, sillaNueva(estado.sillas.length + 1)] })
+  const nueva = sillaNueva(estado.sillas.length + 1)
+  fijar({ ...estado, sillas: [...estado.sillas, nueva] })
+  return nueva
 }
 
 export function guardarSilla(id, datos) {

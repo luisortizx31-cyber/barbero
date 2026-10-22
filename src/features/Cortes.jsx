@@ -1,9 +1,11 @@
-import { useEffect, useRef, useState } from 'react'
+import { useState } from 'react'
 import { useEstado, agregarServicio, guardarServicio, eliminarServicio } from '../data/store'
 import { duracionDe } from '../domain/horario'
 import { formatearMonto } from '../domain/dinero'
 import { FotoCorte, SubirFotoCorte } from '../ui/FotoCorte'
 import { Hoja } from '../ui/Hoja'
+import { Aviso } from '../ui/Aviso'
+import { useAviso } from '../ui/useAviso'
 
 // Los cortes y servicios del local con su precio y cuánto duran: se
 // eligen al ocupar una silla y al cobrarla, y la duración sirve para la
@@ -17,21 +19,9 @@ export default function Cortes() {
   const { servicios } = useEstado()
   const [agregando, setAgregando] = useState(false)
   const [abierto, setAbierto] = useState(null) // id del corte con su ficha abierta
-  const [nuevoId, setNuevoId] = useState(null) // el recién agregado, resaltado
-  const [aviso, setAviso] = useState(null)
-  const temporizador = useRef(null)
-
-  useEffect(() => () => clearTimeout(temporizador.current), [])
-
-  function avisar(texto, id = null) {
-    setNuevoId(id)
-    setAviso(texto)
-    clearTimeout(temporizador.current)
-    temporizador.current = setTimeout(() => {
-      setAviso(null)
-      setNuevoId(null)
-    }, 4000)
-  }
+  // El aviso de abajo; mientras dura, el corte agregado o cambiado
+  // queda resaltado.
+  const { aviso, avisar, resaltado: nuevoId } = useAviso()
 
   function agregado(servicio) {
     setAgregando(false)
@@ -101,11 +91,7 @@ export default function Cortes() {
         </Hoja>
       )}
 
-      {aviso && (
-        <div role="status" className="fixed inset-x-0 bottom-24 z-50 mx-auto w-[calc(100%-2rem)] max-w-sm rounded-2xl bg-libre px-4 py-3 text-center text-sm font-bold text-white shadow-2xl">
-          {aviso}
-        </div>
-      )}
+      <Aviso aviso={aviso} />
     </div>
   )
 }
