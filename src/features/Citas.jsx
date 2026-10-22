@@ -170,9 +170,25 @@ export default function Citas() {
         </Hoja>
       )}
 
-      {editando && (
-        <Hoja titulo={editando === 'nueva' ? 'Nueva cita' : 'Cita'} onCerrar={() => setEditando(null)}>
+      {/* Una cita activa se edita; una que ya terminó (atendida, cancelada,
+          no llegó) solo se ve, con lo que pasó. */}
+      {editando && (editando === 'nueva' || ESTADOS_ACTIVOS.includes(editando.estado)) && (
+        <Hoja titulo={editando === 'nueva' ? 'Nueva cita' : 'Editar cita'} onCerrar={() => setEditando(null)}>
           <FormCita cita={editando === 'nueva' ? null : editando} diaInicial={dia} sillas={sillas} servicios={servicios} clientes={clientes} barberos={barberos} onListo={() => setEditando(null)} />
+        </Hoja>
+      )}
+      {editando && editando !== 'nueva' && !ESTADOS_ACTIVOS.includes(editando.estado) && (
+        <Hoja titulo={`Cita de ${editando.nombre}`} subtitulo={`${formatearDia(editando.fecha)} · ${hora12(editando.hora)}`} onCerrar={() => setEditando(null)}>
+          <DetalleCita
+            cita={editando}
+            estado={estado}
+            onEliminar={() => {
+              if (!confirm(`¿Eliminar la cita de ${editando.nombre}? Se borra del todo.`)) return
+              eliminarCita(editando.id)
+              setEditando(null)
+              setAviso(`🗑 Se eliminó la cita de ${editando.nombre}`)
+            }}
+          />
         </Hoja>
       )}
     </div>
@@ -300,6 +316,48 @@ function FilaCita({ cita: c, conFecha, estado, ahora, onEditar, onAceptar, onCan
         </button>
       </div>
     </li>
+  )
+}
+
+// Una cita que ya terminó: qué se pidió y qué pasó (dónde y con quién se
+// atendió y cuánto se cobró, o por qué se canceló). Solo para ver.
+function DetalleCita({ cita: c, estado, onEliminar }) {
+  const { sillas, servicios, barberos, historial } = estado
+  const info = ESTADOS[c.estado] || ESTADOS.pendiente
+  const barbero = barberos.find((b) => b.id === c.barberoId)
+  const silla = sillas.find((s) => s.id === c.sillaId)
+  const cortes = servicios.filter((s) => c.servicioIds?.includes(s.id))
+  const cortandose = c.estado === 'atendida' && sillas.find((s) => s.ocupadaDesde && s.citaId === c.id)
+  const cobro = c.estado === 'atendida' && historial.find((h) => h.citaId === c.id)
+  const filas = [
+    ['Estado', <span key="e" className={`rounded-full px-2 py-0.5 text-xs font-bold ${info.clase}`}>{info.texto}</span>],
+    ['Cliente', c.nombre],
+    ['Pidió', cortes.length ? `${cortes.map((x) => x.nombre).join(' + ')} · ${formatearMonto(cortes.reduce((t, x) => t + x.precio, 0))}` : '—'],
+    ['Barbero', barbero?.nombre || 'Cualquiera'],
+    ['Silla', silla?.nombre || '—'],
+    c.origen === 'web' ? ['Reservó', '📱 Por la página de clientes'] : null,
+    c.estado === 'atendida' ? ['Llegó', c.atendidaEn ? formatearHora(c.atendidaEn) : '—'] : null,
+    cortandose ? ['Ahora', `✂ Cortándose en ${cortandose.nombre}`] : null,
+    cobro ? ['Cobrado', cobro.cobro ? (cobro.cobro.gratis ? 'Corte gratis 🎁' : `${formatearMonto(cobro.cobro.monto)} · ${formatearHora(cobro.fin)}`) : 'Se liberó sin cobrar'] : null,
+    cobro?.barbero ? ['Lo atendió', cobro.barbero] : null,
+    c.estado === 'cancelada' ? ['Motivo', c.motivo || 'Sin motivo'] : null,
+  ].filter(Boolean)
+
+  return (
+    <div className="space-y-4">
+      <dl className="divide-y divide-linea overflow-hidden rounded-2xl border border-linea">
+        {filas.map(([titulo, valor]) => (
+          <div key={titulo} className="flex items-center justify-between gap-3 px-4 py-2.5 text-sm">
+            <dt className="text-tinta-suave">{titulo}</dt>
+            <dd className="text-right font-semibold">{valor}</dd>
+          </div>
+        ))}
+      </dl>
+      {c.estado === 'atendida' && !cortandose && !cobro && <p className="text-xs text-tinta-suave">Cuando se cobre su silla, aquí sale lo cobrado.</p>}
+      <button type="button" onClick={onEliminar} className="w-full text-center text-sm text-ocupada underline decoration-dotted">
+        🗑 Eliminar cita
+      </button>
+    </div>
   )
 }
 
